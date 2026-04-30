@@ -1,0 +1,86 @@
+---
+# Clock
+- ros_topic_name: "clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
+ 
+# Joint states (for TF tree)
+- ros_topic_name: "joint_states"
+  gz_topic_name: "/world/alphabot2_runway/model/alphabot/joint_state"
+  ros_type_name: "sensor_msgs/msg/JointState"
+  gz_type_name: "gz.msgs.Model"
+  direction: GZ_TO_ROS
+ 
+# Odometry
+- ros_topic_name: "odometry"
+  gz_topic_name: "/odom"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+ 
+# TF pose
+- ros_topic_name: "gz/tf"
+  gz_topic_name: "/model/alphabot/pose"
+  ros_type_name: "tf2_msgs/msg/TFMessage"
+  gz_type_name: "gz.msgs.Pose_V"
+  direction: GZ_TO_ROS
+ 
+- ros_topic_name: "gz/tf_static"
+  gz_topic_name: "/model/alphabot/pose_static"
+  ros_type_name: "tf2_msgs/msg/TFMessage"
+  gz_type_name: "gz.msgs.Pose_V"
+  direction: GZ_TO_ROS
+ 
+# Velocity command (ROS2 -> Gazebo)
+- ros_topic_name: "cmd_vel"
+  gz_topic_name: "/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+ 
+# Front camera
+- ros_topic_name: "camera/image_raw"
+  gz_topic_name: "/world/alphabot2_runway/model/alphabot/link/camera_link/sensor/front_camera/image"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+ 
+- ros_topic_name: "camera/camera_info"
+  gz_topic_name: "/world/alphabot2_runway/model/alphabot/link/camera_link/sensor/front_camera/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+ 
+# IR obstacle sensors
+- ros_topic_name: "ir/left"
+  gz_topic_name: "/ir/left"        # ← was the long path, use the short one
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "ir/right"
+  gz_topic_name: "/ir/right"      
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+ 
+# Line tracking cameras
+- ros_topic_name: "line/center"
+  gz_topic_name: "/world/alphabot2_runway/model/alphabot/link/line_center_link/sensor/line_center/image"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+ 
+- ros_topic_name: "line/left"
+  gz_topic_name: "/world/alphabot2_runway/model/alphabot/link/line_left_link/sensor/line_left/image"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+ 
+- ros_topic_name: "line/right"
+  gz_topic_name: "/world/alphabot2_runway/model/alphabot/link/line_right_link/sensor/line_right/image"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS

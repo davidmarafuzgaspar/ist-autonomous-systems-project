@@ -1,0 +1,179 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="alphabot2_runway">
+
+    <physics name="1ms" type="ignored">
+      <!-- "ignore" is not valid in Harmonic, must be "ignored" -->
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- ====================================================== -->
+    <!-- PLUGINS                                                -->
+    <!-- ====================================================== -->
+    <plugin filename="gz-sim-physics-system"
+      name="gz::sim::systems::Physics">
+    </plugin>
+
+    <plugin filename="gz-sim-sensors-system"
+      name="gz::sim::systems::Sensors">
+      <!-- Switched to ogre (v1) - far more stable on WSL2.      -->
+      <!-- If you are on bare metal Linux with a real GPU and     -->
+      <!-- want ogre2, swap this back - but fix the sky tag first -->
+      <render_engine>ogre</render_engine>
+    </plugin>
+
+    <plugin filename="gz-sim-user-commands-system"
+      name="gz::sim::systems::UserCommands">
+    </plugin>
+
+    <plugin filename="gz-sim-scene-broadcaster-system"
+      name="gz::sim::systems::SceneBroadcaster">
+    </plugin>
+
+    <plugin filename="gz-sim-imu-system"
+      name="gz::sim::systems::Imu">
+    </plugin>
+
+    <plugin filename="gz-sim-navsat-system"
+      name="gz::sim::systems::NavSat">
+    </plugin>
+
+    <!-- ====================================================== -->
+    <!-- SCENE                                                  -->
+    <!-- The empty <sky/> tag is the crash trigger with ogre2.  -->
+    <!-- It causes SetBackgroundColor to run on a null scene     -->
+    <!-- object before the renderer is ready -> segfault.       -->
+    <!-- Removed <sky/> entirely. Add it back only on bare-     -->
+    <!-- metal ogre2 once everything else is stable.            -->
+    <!-- ====================================================== -->
+    <scene>
+      <ambient>1.0 1.0 1.0 1.0</ambient>
+      <background>0.8 0.8 0.8 1.0</background>
+      <!-- sky tag removed: causes null-scene segfault in Harmonic + WSL2 -->
+    </scene>
+
+    <!-- ====================================================== -->
+    <!-- SPHERICAL COORDINATES                                  -->
+    <!-- ====================================================== -->
+    <spherical_coordinates>
+      <latitude_deg>-35.363262</latitude_deg>
+      <longitude_deg>149.165237</longitude_deg>
+      <elevation>584</elevation>
+      <heading_deg>0</heading_deg>
+      <surface_model>EARTH_WGS84</surface_model>
+    </spherical_coordinates>
+
+    <!-- ====================================================== -->
+    <!-- LIGHTING                                               -->
+    <!-- ====================================================== -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <!-- Removed attenuation: directional lights ignore it,   -->
+      <!-- but it can confuse the renderer in some Harmonic builds -->
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- ====================================================== -->
+    <!-- GROUND PLANE                                           -->
+    <!-- Added explicit ground plane - without it the robot     -->
+    <!-- has nothing to land on when spawned at z=0.5           -->
+    <!-- ====================================================== -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>500 500</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>500 500</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.6 0.6 0.6 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ====================================================== -->
+    <!-- AXES MARKER                                            -->
+    <!-- ====================================================== -->
+    <model name="axes">
+      <static>1</static>
+      <link name="link">
+        <visual name="r">
+          <cast_shadows>0</cast_shadows>
+          <pose>5 0 0.1 0 0 0</pose>
+          <geometry>
+            <box><size>10 0.01 0.01</size></box>
+          </geometry>
+          <material>
+            <ambient>1 0 0 0.8</ambient>
+            <diffuse>1 0 0 0.8</diffuse>
+            <emissive>1 0 0 0.8</emissive>
+            <specular>0.5 0.5 0.5 0.8</specular>
+          </material>
+        </visual>
+        <visual name="g">
+          <cast_shadows>0</cast_shadows>
+          <pose>0 5 0.1 0 0 0</pose>
+          <geometry>
+            <box><size>0.01 10 0.01</size></box>
+          </geometry>
+          <material>
+            <ambient>0 1 0 0.8</ambient>
+            <diffuse>0 1 0 0.8</diffuse>
+            <emissive>0 1 0 0.8</emissive>
+            <specular>0.5 0.5 0.5 0.8</specular>
+          </material>
+        </visual>
+        <visual name="b">
+          <cast_shadows>0</cast_shadows>
+          <pose>0 0 5.1 0 0 0</pose>
+          <geometry>
+            <box><size>0.01 0.01 10</size></box>
+          </geometry>
+          <material>
+            <ambient>0 0 1 0.8</ambient>
+            <diffuse>0 0 1 0.8</diffuse>
+            <emissive>0 0 1 0.8</emissive>
+            <specular>0.5 0.5 0.5 0.8</specular>
+          </material>
+        </visual>
+        <sensor name="navsat_sensor" type="navsat">
+          <always_on>1</always_on>
+          <update_rate>1</update_rate>
+        </sensor>
+      </link>
+    </model>
+
+    <!-- ====================================================== -->
+    <!-- MODELS                                                 -->
+    <!-- ====================================================== -->
+    <include>
+      <uri>model://runway</uri>
+      <pose degrees="true">-29 545 0 0 0 363</pose>
+    </include>
+
+    <include>
+      <uri>model://alphabot2</uri>
+      <!-- Lowered z from 0.5 to 0.05 - dropping from 0.5m     -->
+      <!-- caused a hard physics impact and contributed to wobble -->
+      <pose>0 0 0.05 0 0 0</pose>
+    </include>
+
+  </world>
+</sdf>

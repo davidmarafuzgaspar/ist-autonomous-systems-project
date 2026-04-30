@@ -1,0 +1,66 @@
+ARMING_CHECK 0
+
+# Iris is X frame
+Q_FRAME_CLASS	     1
+Q_FRAME_TYPE	     1
+Q_ENABLE 1
+Q_TRANSITION_MS 5000
+
+# we need small INS_ACC offsets so INS is recognised as being calibrated
+INS_ACCOFFS_X   0.001
+INS_ACCOFFS_Y   0.001
+INS_ACCOFFS_Z   0.001
+INS_ACCSCAL_X   1.001
+INS_ACCSCAL_Y   1.001
+INS_ACCSCAL_Z   1.001
+INS_ACC2OFFS_X   0.001
+INS_ACC2OFFS_Y   0.001
+INS_ACC2OFFS_Z   0.001
+INS_ACC2SCAL_X   1.001
+INS_ACC2SCAL_Y   1.001
+INS_ACC2SCAL_Z   1.001
+INS_GYR_CAL      0
+ARSPD_TYPE 0
+BATT_MONITOR    4
+BATT_CAPACITY   50000 #We don't want to get low battery warnings when testing
+
+# Match servo out for motors
+MOT_PWM_MIN      1100
+MOT_PWM_MAX      1900
+
+# Gimbal on mount 1 has 3 DOF
+MNT1_TYPE        1           # Servo
+MNT1_PITCH_MAX   45
+MNT1_PITCH_MIN   -135
+MNT1_ROLL_MAX    30
+MNT1_ROLL_MIN    -30
+MNT1_YAW_MAX     160
+MNT1_YAW_MIN     -160
+
+# Gimbal RC in
+#RC6_MAX          1900
+#RC6_MIN          1100
+#RC6_OPTION       212         # Mount1 Roll
+#RC7_MAX          1900
+#RC7_MIN          1100
+#RC7_OPTION       213         # Mount1 Pitch
+#RC8_MAX          1900
+#RC8_MIN          1100
+# RC8_OPTION       214         # Mount1 Yaw
+
+# Gimbal servo out
+SERVO10_FUNCTION  8           # Mount1Roll
+SERVO11_FUNCTION  7           # Mount1Pitch
+SERVO12_FUNCTION  6           # Mount1Yaw
+
+# Control Surfaces
+SERVO1_FUNCTION  24          # FlaperonLeft
+SERVO2_FUNCTION  25          # FlaperonRight
+SERVO3_FUNCTION  79          # VTailLeft
+SERVO4_FUNCTION  80          # VTailRight
+SERVO5_FUNCTION  33          # Motor1
+SERVO6_FUNCTION  34          # Motor2
+SERVO7_FUNCTION  35          # Motor3
+SERVO8_FUNCTION  36          # Motor4
+SERVO9_FUNCTION  70          # Motor5
+SERVO9_MIN       1000        # Minimum PWM

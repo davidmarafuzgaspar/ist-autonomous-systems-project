@@ -1,0 +1,17 @@
+# ROS build files
+build/
+devel/
+install/
+log/
+
+# C++ build artifacts
+*.o
+*.so
+*.pyc
+
+# IDE files
+.vscode/
+.idea/
+
+# system files
+.DS_Store

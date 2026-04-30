@@ -1,0 +1,1157 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <model name="atlas_24_25">
+    <static>false</static>  <!-- MUDAR PARA false-->
+    <pose>0 0 0 0 0 0</pose>
+
+    <!-- CORPO -->
+    <link name="corpo">
+      <inertial>
+        <pose>1.352 0.475 1.498 0 0 0</pose> <!--isto muda o cg do aviao supostamente--> <!-- este ponto seria o medio entre as posicoes dos links da hinge dos ailerons esquerdo e direito-->
+        <mass>17.748</mass>
+        <inertia>
+          <ixx>4.89725</ixx><ixy>0</ixy><ixz>-0.46934</ixz>
+          <iyy>1.88381</iyy><iyz>0</iyz><izz>3.44073</izz>
+        </inertia>
+      </inertial>
+      <visual name="corpo_visual">
+        <geometry><mesh><uri>model://atlas_24_25/meshes/abiaum_control2.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material>
+          <ambient>1 0.5 0 1</ambient>   <!--laranja-->
+          <diffuse>1 0.5 0 1</diffuse>
+        </material>
+      </visual>
+      <!--para debug-->
+      <!-- <visual name="cp_main_wing"> 
+        <pose>1.35221 0.46 1.4725 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.25</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0 0 1</ambient>
+          <diffuse>0 0 1</diffuse>
+          <specular>0.1 0.1 0.1 1</specular>
+        </material>
+      </visual> -->
+      <collision name="corpo_collision">
+        <pose>1 1 1 0 0 0</pose>  <!-- pose and axis correspondance   [1 1 1 = EIXO VERMELHO, EIXO AZUL, EIXO VERDE] -->
+        <geometry>
+          <box>
+            <size>2 2 2</size>     
+          </box>
+        </geometry>
+        <!-- <geometry><mesh><uri>model://atlas_24_25/meshes/abiaum_control3.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry> -->
+      </collision>
+
+
+      <!-- Sensores -->
+      <sensor name="imu_sensor" type="imu">
+        <always_on>true</always_on>
+        <update_rate>100.0</update_rate>
+        <pose>0 0 0 1.5708 0 0</pose>
+        <visualize>true</visualize>
+      </sensor>
+
+      <sensor name="gps_sensor" type="navsat">
+        <always_on>true</always_on>
+        <update_rate>10.0</update_rate>
+      </sensor>
+
+      <sensor name="magnetometer" type="magnetometer">
+        <always_on>true</always_on>
+        <!-- <pose>0 0 0 1.5708 0 0</pose>   match IMU  This may fix the mag field issue after deleting the parameter in param file to neglect it-->
+      </sensor> 
+
+      <sensor name="barometer" type="air_pressure">
+        <always_on>true</always_on>
+      </sensor>
+
+      <sensor name="airspeed" type="air_speed">
+        <always_on>true</always_on>
+      </sensor> 
+
+      <sensor name="altimeter" type="altimeter">
+        <always_on>true</always_on>
+      </sensor>
+
+    </link>
+
+    <!-- SUPERFÍCIES DE CONTROLO -->
+    <!-- AILERON ESQUERDO -->
+    <link name="left_aileron">
+      <pose>0 0 0 0 0 0</pose> <!--<pose>2.58 0.47 1.695 -1.5 1.555 0.08</pose>-->
+      <inertial>
+        <mass>0.105</mass>
+        <pose>2.58 0.47 1.695 -1.5 1.555 0.08</pose>
+        <inertia>
+          <ixx>0.0924736</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.08869</iyy><iyz>0</iyz><izz>0.004759</izz>
+        </inertia>
+      </inertial>
+      <visual name="left_aileron_visual">
+        <pose>2.58 0.47 1.695 -1.5 1.565 0.08</pose>
+        <!-- <pose>0 0 0 0 0 0</pose> -->
+        <geometry><mesh><uri>model://atlas_24_25/meshes/aileron_esquerdo.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material>
+          <ambient>0 0 0 1</ambient>   <!--preto-->
+          <diffuse>0 0 0 1</diffuse>
+        </material>
+      </visual>
+      <collision name="left_aileron_collision">
+        <pose>2.58 0.47 1.695 -1.5 1.555 0.08</pose>  
+        <geometry><mesh><uri>model://atlas_24_25/meshes/aileron_esquerdo.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <!-- <geometry><box><size>0.6 0.06 0.06</size></box></geometry>  Ajustado ao tamanho do aileron -->
+      </collision>
+    </link>
+
+    <!-- HINGE AILERON ESQUERDO -->
+    <link name="left_aileron_hinge">
+      <pose>2.01 0.485 1.353 0 0 0</pose>    <!-- Original: <pose>2.58 0.47 1.695 0 0 0</pose> --> 
+      <inertial>
+        <mass>0.001</mass>
+        <pose>0 0 0 0 0 0</pose>
+        <inertia>
+          <ixx>1e-6</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>1e-6</iyy><iyz>0</iyz><izz>1e-6</izz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <!-- AILERON DIREITO -->
+    
+    <link name="right_aileron">
+      <pose>0 0 0 0 0 0</pose> 
+      <inertial>
+        <mass>0.105</mass>
+        <pose>0.82 0.45 1.68 -1.5 1.605 0</pose>
+        <inertia>
+          <ixx>0.0924736</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.08869</iyy><iyz>0</iyz><izz>0.004759</izz>
+        </inertia>
+      </inertial>
+      <visual name="right_aileron_visual">
+        <pose>0.82 0.45 1.68 -1.5 1.605 0</pose>
+        <geometry><mesh><uri>model://atlas_24_25/meshes/aileron_direito.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material>
+          <ambient>0 0 0 1</ambient>   <!--preto-->
+          <diffuse>0 0 0 1</diffuse>
+        </material>
+      </visual>
+      <collision name="right_aileron_collision">
+        <pose>0.82 0.45 1.68 -1.5 1.605 0</pose>  
+        <geometry><mesh><uri>model://atlas_24_25/meshes/aileron_direito.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+      </collision>
+    </link>
+
+    <!-- HINGE AILERON DIREITO -->
+    <link name="right_aileron_hinge">
+      <pose>0.25 0.465 1.338 0 0 0</pose>
+      <inertial>
+        <mass>0.001</mass>
+        <pose>0 0 0 0 0 0</pose>
+        <inertia>
+          <ixx>1e-6</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>1e-6</iyy><iyz>0</iyz><izz>1e-6</izz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <!-- ELEVATORS -->
+
+    <!-- <link name="left_elevator">
+      <pose>1.37064 0.87 0.2925 0 1.571 -0.7854</pose>
+      <inertial>
+        <mass>0.210</mass>
+        <inertia>
+          <ixx>0.1962</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.0262</iyy><iyz>0</iyz><izz>0.1913</izz> -->
+          <!-- <ixx>0.1962</ixx><ixy>-0.0111</ixy><ixz>-0.042</ixz>
+          <iyy>0.0262</iyy><iyz>0.0514</iyz><izz>0.1913</izz>  backup-->
+          <!-- <ixx>0.0262</ixx><ixy>0.0514</ixy><ixz>-0.0420</ixz>
+          <iyy>0.1913</iyy><iyz>-0.0111</iyz><izz>0.1962</izz>  provavelmente mal -->
+        <!-- </inertia>
+      </inertial>
+      <visual name="elevators_visual">
+        <geometry><mesh><uri>model://atlas_24_25/meshes/leme.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material>
+          <ambient>0 0 0 1</ambient>   preto
+          <diffuse>0 0 0 1</diffuse>
+        </material>
+      </visual>
+    </link> -->
+
+    <link name="left_elevator">
+      <pose>0 0 0 0 0 0</pose> 
+      <inertial>
+        <mass>0.210</mass>
+        <pose>1.37064 0.87 0.2925 0 1.571 -0.7854</pose>
+        <inertia>
+          <ixx>0.1962</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.0262</iyy><iyz>0</iyz><izz>0.1913</izz>
+        </inertia>
+      </inertial>
+      <visual name="elevators_visual">
+        <pose>1.37064 0.87 0.2925 0 1.571 -0.7854</pose>
+        <geometry><mesh><uri>model://atlas_24_25/meshes/leme.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material>
+          <ambient>0 0 0 1</ambient>   <!--preto-->
+          <diffuse>0 0 0 1</diffuse>
+        </material>
+      </visual>
+      <collision name="left_elevator_collision">
+        <pose>1.37064 0.87 0.2925 0 1.571 -0.7854</pose>  
+        <geometry><mesh><uri>model://atlas_24_25/meshes/leme.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+      </collision>
+    </link>
+
+    <!-- HINGE ELEVATOR ESQUERDO -->
+    <link name="left_elevator_hinge">
+      <pose>1.581 0.65 0.1375 0 1.571 -0.7854</pose> <!--rotate the hinge to make the axis 0 0 1-->
+      <inertial>
+        <mass>0.001</mass>
+        <pose>0 0 0 0 0 0</pose>
+        <inertia>
+          <ixx>1e-6</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>1e-6</iyy><iyz>0</iyz><izz>1e-6</izz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <!-- <link name="right_elevator">
+      <pose>0.94 0.44 0.2925 0 1.571 0.7854</pose>
+      <inertial>
+        <mass>0.210</mass>
+        <inertia>
+          <ixx>0.1962</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.0262</iyy><iyz>0</iyz><izz>0.1913</izz>
+          <ixx>0.1962</ixx><ixy>-0.0111</ixy><ixz>-0.042</ixz>
+          <iyy>0.0262</iyy><iyz>0.0514</iyz><izz>0.1913</izz>  backup
+          <ixx>0.0262</ixx><ixy>0.0514</ixy><ixz>-0.0420</ixz>
+          <iyy>0.1913</iyy><iyz>-0.0111</iyz><izz>0.1962</izz>  provavelmente mal 
+        </inertia>
+      </inertial>
+      <visual name="elevators_visual">
+        <geometry><mesh><uri>model://atlas_24_25/meshes/leme.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material>
+          <ambient>0 0 0 1</ambient>   preto
+          <diffuse>0 0 0 1</diffuse>
+        </material>
+      </visual>
+    </link> -->
+
+    <link name="right_elevator">
+      <pose>0 0 0 0 0 0</pose> 
+      <inertial>
+        <mass>0.210</mass>
+        <pose>0.94 0.44 0.2925 0 1.571 0.7854</pose>
+        <inertia>
+          <ixx>0.1962</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.0262</iyy><iyz>0</iyz><izz>0.1913</izz>
+        </inertia>
+      </inertial>
+      <visual name="elevators_visual">
+        <pose>0.94 0.44 0.2925 0 1.571 0.7854</pose>
+        <geometry><mesh><uri>model://atlas_24_25/meshes/leme.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+        <material>
+          <ambient>0 0 0 1</ambient>   <!--preto-->
+          <diffuse>0 0 0 1</diffuse>
+        </material>
+      </visual>
+      <collision name="right_elevator_collision">
+        <pose>0.94 0.44 0.2925 0 1.571 0.7854</pose>  
+        <geometry><mesh><uri>model://atlas_24_25/meshes/leme.dae</uri><scale>0.001 0.001 0.001</scale></mesh></geometry>
+      </collision>
+    </link>
+
+    <!-- HINGE ELEVATOR DIREITO -->
+    <link name="right_elevator_hinge">
+      <pose>1.16048 0.65 0.1375 0 1.571 0.7854</pose>
+      <inertial>
+        <mass>0.001</mass>
+        <pose>0 0 0 0 0 0</pose>
+        <inertia>
+          <ixx>1e-6</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>1e-6</iyy><iyz>0</iyz><izz>1e-6</izz>
+        </inertia>
+      </inertial>
+    </link>
+
+
+    <!-- HÉLICES -->  
+    <!-- Frente esquerda--> <link name="front_left_propeller">
+      <pose>1.78 0.51 2.21 0 0 0</pose>
+      <inertial>
+        <mass>0.075</mass>
+        <inertia>
+          <ixx>0.00051</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.00102</iyy><iyz>0</iyz><izz>0.00051</izz>
+        </inertia>
+      </inertial>
+      <visual name="propeller_visual">
+        <geometry><mesh><uri>model://atlas_24_25/meshes/prop_13in.dae</uri><scale>0.0015 0.0015 0.0015</scale></mesh></geometry>
+        <material>
+          <ambient>0 0 0 1</ambient>  <!-- preto -->
+          <diffuse>0 0 0 1</diffuse>
+        </material>
+      </visual>
+      <gravity>1</gravity>
+      <velocity_decay/>
+      <self_collide>0</self_collide>
+    </link>
+
+    <!-- Frente direita--> <link name="front_right_propeller">
+      <pose>0.92442 0.51 2.21 0 0 0</pose>
+      <inertial>
+        <mass>0.075</mass>
+        <inertia>
+          <ixx>0.00051</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.00102</iyy><iyz>0</iyz><izz>0.00051</izz>
+        </inertia>
+      </inertial>
+      <visual name="propeller_visual">
+        <geometry><mesh><uri>model://atlas_24_25/meshes/prop_13in.dae</uri><scale>0.0015 0.0015 0.0015</scale></mesh></geometry>
+        <material>
+          <ambient>0 0 0 1</ambient>   <!-- preto -->
+          <diffuse>0 0 0 1</diffuse>
+        </material>
+      </visual>
+      <gravity>1</gravity>
+      <velocity_decay/>
+      <self_collide>0</self_collide>
+    </link>
+
+    <!-- Trás esquerda--> <link name="back_left_propeller">
+      <pose>1.78 0.51 0.735 0 0 0</pose>
+      <inertial>
+        <mass>0.075</mass>
+        <inertia>
+          <ixx>0.00051</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.00102</iyy><iyz>0</iyz><izz>0.00051</izz>
+        </inertia>
+      </inertial>
+      <visual name="propeller_visual">
+        <geometry><mesh><uri>model://atlas_24_25/meshes/prop_13in.dae</uri><scale>0.0015 0.0015 0.0015</scale></mesh></geometry>
+        <material>
+          <ambient>0 0 0 1</ambient>  <!-- preto -->
+          <diffuse>0 0 0 1</diffuse>
+        </material>
+      </visual>
+      <gravity>1</gravity>
+      <velocity_decay/>
+      <self_collide>0</self_collide>
+    </link>
+
+    <!-- Trás direita--> <link name="back_right_propeller">
+      <pose>0.92442 0.51 0.735 0 0 0</pose>
+      <inertial>
+        <mass>0.075</mass>
+        <inertia>
+          <ixx>0.00051</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.00102</iyy><iyz>0</iyz><izz>0.00051</izz>
+        </inertia>
+      </inertial>
+      <visual name="propeller_visual">
+        <geometry><mesh><uri>model://atlas_24_25/meshes/prop_13in.dae</uri><scale>0.0015 0.0015 0.0015</scale></mesh></geometry>
+        <material>
+          <ambient>0 0 0 1</ambient>  <!-- preto -->
+          <diffuse>0 0 0 1</diffuse>
+        </material>
+      </visual>
+      <gravity>1</gravity>
+      <velocity_decay/>
+      <self_collide>0</self_collide>
+    </link>
+
+    <!-- Pusher --> <link name="pusher_propeller">
+      <pose>1.365 0.4 1.0 1.571 0 0</pose>
+      <inertial>
+        <mass>0.075</mass>
+        <inertia>
+          <ixx>0.00051</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.00102</iyy><iyz>0</iyz><izz>0.00051</izz>
+        </inertia>
+      </inertial>
+      <visual name="propeller_visual">
+        <geometry><mesh><uri>model://atlas_24_25/meshes/prop_13in.dae</uri><scale>0.00133 0.00133 0.00133</scale></mesh></geometry>
+        <material>
+          <ambient>0 0 0 1</ambient> <!-- preto -->
+          <diffuse>0 0 0 1</diffuse>
+        </material>
+      </visual>
+      <gravity>1</gravity>
+      <velocity_decay/>
+      <self_collide>0</self_collide>
+    </link>   
+
+    <!--Include gimbal-->
+    <include merge="true">
+      <uri>package://ardupilot_gazebo/models/gimbal_small_3d</uri>
+      <name>gimbal</name>
+      <pose degrees="true">1.35221 0.165 1.6 0 0 0</pose> <!--AJUSTAR POSE, principalmente em y (altura)-->
+    </include>  
+
+    <!-- JOINTS -->
+
+    <joint name="joint_left_aileron_fixed" type="fixed">
+      <!-- <pose>0 0 0 0 0 0</pose> --> <!-- o que estava era isto: <pose>0 0 0 -1.5 1.555 0.08</pose> --> <!-- As joints não precisam de pose porque já se diz o child e o parent-->
+      <parent>left_aileron_hinge</parent> 
+      <child>left_aileron</child> 
+    </joint>
+
+    <!-- Hinge Joint -->
+    <joint name="joint_left_aileron_hinge" type="revolute">
+      <!-- <pose>2.58 0.47 1.695 0 0 0</pose> -->  <!-- posição do hinge no frame do model --> <!-- As joints não precisam de pose porque já se diz o child e o parent-->
+      <parent>corpo</parent>
+      <child>left_aileron_hinge</child>
+      <axis>
+        <xyz>1 0 0</xyz>   <!-- ajusta se o eixo real for outro -->
+        <limit>
+          <lower>-0.39267</lower>
+          <upper>0.48</upper> <!-- Subtrair aos limites o angulo de ataque de trim --> <!-- Talvez ao contrário por causa dos sinais (caso o avião voe ao contrário para a esquerda e para a direita)-->
+          <effort>8.0</effort> <!-- Nm de torque máximo que esta joint pode aplicar 5-10 valor comum para avião médio-->
+        </limit>
+        <dynamics>
+          <damping>0.6</damping>
+          <friction>0.0</friction>
+        </dynamics>
+      </axis>
+    </joint>
+
+    <joint name="joint_right_aileron_fixed" type="fixed">
+      <parent>right_aileron_hinge</parent> 
+      <child>right_aileron</child> 
+    </joint>
+
+    <!-- Hinge Joint -->
+    <joint name="joint_right_aileron_hinge" type="revolute">
+      <parent>corpo</parent>
+      <child>right_aileron_hinge</child>
+      <axis>
+        <xyz>1 0 0</xyz>  
+        <limit>
+          <lower>-0.39267</lower>
+          <upper>0.48</upper>
+          <effort>8.0</effort> <!-- Nm de torque máximo que esta joint pode aplicar 5-10 valor comum para avião médio-->
+        </limit>
+        <dynamics>
+          <damping>0.6</damping>
+          <friction>0.0</friction>
+        </dynamics>
+      </axis>
+    </joint>
+
+    <!-- <joint name="joint_right_aileron" type="revolute">
+      <parent>corpo</parent><child>right_aileron</child>
+      <axis><xyz>0 1 0</xyz><limit><lower>-0.2</lower><upper>0.2</upper></limit></axis>
+    </joint> -->
+    <!-- <joint name="joint_left_elevator" type="revolute">
+      <parent>corpo</parent><child>left_elevator</child>
+      <axis><xyz>0 0.70711 0.70711</xyz><limit><lower>-0.2</lower><upper>0.2</upper></limit></axis> os eixos têm de estar normalizados
+    </joint> -->
+    <!-- <joint name="joint_right_elevator" type="revolute">
+      <parent>corpo</parent><child>right_elevator</child>
+      <axis><xyz>0 -0.70711 0.70711</xyz><limit><lower>-0.2</lower><upper>0.2</upper></limit></axis>  os eixos têm de estar normalizados
+    </joint> -->
+
+    <joint name="joint_left_elevator_fixed" type="fixed">
+      <parent>left_elevator_hinge</parent> 
+      <child>left_elevator</child> 
+    </joint>
+
+    <!-- Hinge Joint -->
+    <joint name="joint_left_elevator_hinge" type="revolute">
+      <parent>corpo</parent>
+      <child>left_elevator_hinge</child>
+      <axis>
+        <xyz>0 0 1</xyz>  
+        <limit>
+          <lower>-0.436</lower> 
+          <upper>0.436</upper>
+          <effort>8.0</effort>
+        </limit>
+        <dynamics>
+          <damping>0.6</damping>
+          <friction>0.0</friction>
+        </dynamics>
+      </axis>
+    </joint>
+
+    <joint name="joint_right_elevator_fixed" type="fixed">
+      <parent>right_elevator_hinge</parent> 
+      <child>right_elevator</child> 
+    </joint>
+
+    <!-- Hinge Joint -->
+    <joint name="joint_right_elevator_hinge" type="revolute">
+      <parent>corpo</parent>
+      <child>right_elevator_hinge</child>
+      <axis>
+        <xyz>0 0 1</xyz>  
+        <limit>
+          <lower>-0.436</lower> 
+          <upper>0.436</upper>
+          <effort>8.0</effort>
+        </limit>
+        <dynamics>
+          <damping>0.6</damping>
+          <friction>0.0</friction>
+        </dynamics>
+      </axis>
+    </joint>
+
+
+    <joint name="joint_propeller_1" type="revolute">
+      <parent>corpo</parent><child>front_left_propeller</child>
+      <axis><xyz>0 1 0</xyz><limit><effort>1.485</effort><velocity>602</velocity><lower>-1e16</lower><upper>1e16</upper></limit><dynamics><damping>0.004</damping></dynamics><use_parent_model_frame>1</use_parent_model_frame></axis> <!--Dá para adicionar torque (effort) máximo e valocidade de rotação máxima (rad/s) nos motores-->
+    </joint>
+    <joint name="joint_propeller_2" type="revolute">
+      <parent>corpo</parent><child>front_right_propeller</child>
+      <axis><xyz>0 -1 0</xyz><limit><effort>1.485</effort><velocity>602</velocity><lower>-1e16</lower><upper>1e16</upper></limit><dynamics><damping>0.004</damping></dynamics><use_parent_model_frame>1</use_parent_model_frame></axis>
+    </joint>
+    <joint name="joint_propeller_3" type="revolute">
+      <parent>corpo</parent><child>back_left_propeller</child>
+      <axis><xyz>0 -1 0</xyz><limit><effort>1.485</effort><velocity>602</velocity><lower>-1e16</lower><upper>1e16</upper></limit><dynamics><damping>0.004</damping></dynamics><use_parent_model_frame>1</use_parent_model_frame></axis>
+    </joint>
+    <joint name="joint_propeller_4" type="revolute">
+      <parent>corpo</parent><child>back_right_propeller</child>
+      <axis><xyz>0 1 0</xyz><limit><effort>1.485</effort><velocity>602</velocity><lower>-1e16</lower><upper>1e16</upper></limit><dynamics><damping>0.004</damping></dynamics><use_parent_model_frame>1</use_parent_model_frame></axis>
+    </joint>
+    <joint name="joint_pusher" type="revolute">
+      <parent>corpo</parent><child>pusher_propeller</child>
+      <axis><xyz>0 1 0</xyz><limit><effort>2.04</effort><velocity>754</velocity><lower>-1e16</lower><upper>1e16</upper></limit><dynamics><damping>0.004</damping></dynamics><use_parent_model_frame>1</use_parent_model_frame></axis>
+    </joint>
+    <joint name="gimbal_joint" type="revolute">
+      <parent>corpo</parent><child>gimbal_link</child>
+      <axis><limit><lower>0</lower><upper>0</upper></limit><xyz>0 1 0</xyz></axis>
+    </joint>
+
+
+    <!-- PLUGINS -->
+
+    <plugin filename="gz-sim-joint-state-publisher-system"
+      name="gz::sim::systems::JointStatePublisher">
+    </plugin>
+
+    <plugin
+      filename="gz-sim-odometry-publisher-system"
+      name="gz::sim::systems::OdometryPublisher">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <dimensions>3</dimensions>
+    </plugin>
+
+    <!-- PLUGINS JOINT FORCE-->
+
+    <plugin filename="gz-sim-apply-joint-force-system"
+      name="gz::sim::systems::ApplyJointForce">
+      <joint_name>joint_left_aileron_hinge</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system"
+      name="gz::sim::systems::ApplyJointForce">
+      <joint_name>joint_right_aileron_hinge</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system"
+      name="gz::sim::systems::ApplyJointForce">
+      <joint_name>joint_left_elevator_hinge</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system"
+      name="gz::sim::systems::ApplyJointForce">
+      <joint_name>joint_right_elevator_hinge</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system"
+      name="gz::sim::systems::ApplyJointForce">
+      <joint_name>joint_propeller_1</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system"
+      name="gz::sim::systems::ApplyJointForce">
+      <joint_name>joint_propeller_2</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system"
+      name="gz::sim::systems::ApplyJointForce">
+      <joint_name>joint_propeller_3</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system"
+      name="gz::sim::systems::ApplyJointForce">
+      <joint_name>joint_propeller_4</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system"
+      name="gz::sim::systems::ApplyJointForce">
+      <joint_name>joint_pusher</joint_name>
+    </plugin>
+    <plugin filename="gz-sim-apply-joint-force-system"
+      name="gz::sim::systems::ApplyJointForce">
+      <joint_name>gimbal_joint</joint_name>
+    </plugin>
+
+    <!-- PLUGINS DE SUPERFÍCIES-->
+
+    <!-- O que vinha em default (caso seja preciso para comparar ou assim) era:
+    <a0>0.13</a0>
+      <cla>3.7</cla>
+      <cda>0.06417112299</cda>
+      <cma>0.0</cma>
+      <alpha_stall>0.3391428111</alpha_stall>
+      <cla_stall>-3.85</cla_stall>
+      <cda_stall>-0.9233984055</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <cp>0.195 0.55 1.8</cp>
+      <area>0.9</area>
+      <air_density>1.2041</air_density>
+      <forward>0 0 1</forward>
+      <upward>0 1 0</upward>
+      <link_name>corpo</link_name>
+    -->
+
+
+    <!-- right_wing -->
+    <!-- <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.0493</a0>
+      <cla>20.626</cla>
+      <cda>0.251</cda>
+      <cma>-0.86</cma>
+      <alpha_stall>0.253</alpha_stall>
+      <cla_stall>-3.85</cla_stall> Vou deixar default porque a equipa de aero não me consegue arranjar dados fidedignos depois do stall 
+      <cda_stall>-0.9233984055</cda_stall> Mesma coisa neste caso
+      <cma_stall>-1.3751</cma_stall>
+      <cp>0 0 0</cp>  <cp>0.195 0.55 1.8</cp> (deve estar mal)  este cp tem de ser a posição do centro de pressões de cada casa relativamente ao centro geométrico do avião 
+      <area>0.4485</area>
+      <air_density>1.2041</air_density>
+      <forward>0 0 1</forward>
+      <upward>0 1 0</upward>
+      <link_name>corpo</link_name>  Pode ficar corpo para as asas 
+    </plugin> -->
+
+    <!-- left_wing -->
+    <!-- <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.0493</a0>
+      <cla>20.626</cla>
+      <cda>0.251</cda>
+      <cma>-0.86</cma>
+      <alpha_stall>0.253</alpha_stall>
+      <cla_stall>-3.85</cla_stall> Vou deixar default porque a equipa de aero não me consegue arranjar dados fidedignos depois do stall 
+      <cda_stall>-0.9233984055</cda_stall> Mesma coisa neste caso
+      <cma_stall>-1.3751</cma_stall>
+      <cp>0 0 0</cp> <cp>0.195 0.55 1.8</cp> (deve estar mal)
+      <area>0.4485</area>
+      <air_density>1.2041</air_density>
+      <forward>0 0 1</forward>
+      <upward>0 1 0</upward>
+      <link_name>corpo</link_name>  Pode ficar corpo para as asas 
+    </plugin> -->
+
+    <!--Main Wing-->
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.0436</a0>
+      <cla>20.626</cla> 
+      <cda>0.00387</cda>
+      <cma>-0.015</cma>
+      <alpha_stall>0.253</alpha_stall>
+      <cla_stall>-3</cla_stall>
+      <cda_stall>0.0176</cda_stall>
+      <cma_stall>-0.024</cma_stall>
+      <cp>1.352 0.46 1.68</cp> <!--à frente do ponto médio da posição das hélices para não haver oscilações e ter margem estática positiva--> <!-- <cp>1.35221 0.46 1.6725</cp> -->
+      <area>0.897</area>
+      <air_density>1.2041</air_density>
+      <forward>0 0 1</forward>
+      <upward>0 1 0</upward>
+      <link_name>corpo</link_name>
+    </plugin>
+
+    <!-- right_aileron --> <!-- ESTES VALORES TODOS SUPER ESPECÍFICOS PARA AS SUPERFÍCIES DE CONTROLO SÃO ESTRANHOS -->
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.13</a0>
+      <cla>6.8</cla>
+      <cda>0.06417112299</cda>
+      <cma>0.0</cma>
+      <alpha_stall>0.6391428111</alpha_stall>
+      <cla_stall>-3.85</cla_stall>
+      <cda_stall>-0.9233984055</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <cp>0.25 0.465 1.32</cp> <!-- OS CP SÃO GLOBAIS PARA AS SUPERFÍCIES DE CONTROLO (ligeiro offset em z da hinge que é onde o eixo real da peça está)--> 
+      <area>0.036</area>
+      <air_density>1.2041</air_density>
+      <forward>0 0 1</forward>
+      <upward>0 1 0</upward>
+      <link_name>right_aileron</link_name>
+      <control_joint_name>joint_right_aileron_hinge</control_joint_name>
+      <control_joint_rad_to_cl>-5.0</control_joint_rad_to_cl>
+    </plugin>
+    <!-- left_aileron -->
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.13</a0>
+      <cla>6.8</cla>
+      <cda>0.06417112299</cda>
+      <cma>0.0</cma>
+      <alpha_stall>0.6391428111</alpha_stall>
+      <cla_stall>-3.85</cla_stall>
+      <cda_stall>-0.9233984055</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <cp>2.01 0.485 1.34</cp> <!-- OS CP SÃO GLOBAIS (ligeiro offset em z da hinge que é onde o eixo real da peça está)--> 
+      <area>0.036</area>
+      <air_density>1.2041</air_density>
+      <forward>0 0 1</forward>
+      <upward>0 1 0</upward>
+      <link_name>left_aileron</link_name>
+      <control_joint_name>joint_left_aileron_hinge</control_joint_name>
+      <control_joint_rad_to_cl>-5.0</control_joint_rad_to_cl>
+    </plugin>
+    <!-- right elevator -->
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.0</a0>
+      <cla>4.752798721</cla>
+      <cda>0.6417112299</cda>
+      <cma>0.0</cma>
+      <alpha_stall>0.3391428111</alpha_stall>
+      <cla_stall>-3.85</cla_stall>
+      <cda_stall>-0.9233984055</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <cp>1.02 0.87 0.12</cp> 
+      <area>0.03808</area>
+      <air_density>1.2041</air_density>
+      <forward>0 0 1</forward>
+      <upward>1 1 0</upward>
+      <link_name>right_elevator</link_name>
+      <control_joint_name>joint_right_elevator_hinge</control_joint_name>
+      <control_joint_rad_to_cl>-5.0</control_joint_rad_to_cl>
+    </plugin>
+    <!-- left elevator -->
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.0</a0>
+      <cla>4.752798721</cla>
+      <cda>0.6417112299</cda>
+      <cma>0.0</cma>
+      <alpha_stall>0.3391428111</alpha_stall>
+      <cla_stall>-3.85</cla_stall>
+      <cda_stall>-0.9233984055</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <cp>1.37731 0.65 0.12</cp> 
+      <area>0.03808</area>
+      <air_density>1.2041</air_density>
+      <forward>0 0 1</forward>
+      <upward>-1 1 0</upward>
+      <link_name>left_elevator</link_name>
+      <control_joint_name>joint_left_elevator_hinge</control_joint_name>
+      <control_joint_rad_to_cl>-5.0</control_joint_rad_to_cl>
+    </plugin>
+
+    <!-- PLUGINS DE MOTOR - ISTO É FEITO PARA AMBAS AS HÉLICES APENAS MUDANDO O SINAL EM FORWARD E EM UPWARD SEMPRE QUE APLICÁVEL-->
+
+    <!-- ESTES VALORES ESPECÍFICOS TODOS PARA OS ROTORES AINDA É MAIS ESTRANHO -->
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.3</a0>
+      <alpha_stall>1.4</alpha_stall>
+      <cla>4.2500</cla>
+      <cda>0.10</cda>
+      <cma>0.0</cma>
+      <cla_stall>-0.025</cla_stall>
+      <cda_stall>0.0</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <area>0.008</area>
+      <air_density>1.2041</air_density>
+      <cp>0 0 0.267</cp>   <!--<cp>0 0 0.267</cp>--> <!--<cp>0 0 0.05</cp> (ESTE VALOR É PARA TODOS OS CP DA FRENTE)--> <!-- CP É LOCAL PARA OS ROTORES E VOU PÔ-LO COM O RAIO DAS HÉLICES EM Z (OU SEJA PARA A FRENTE NUMA E PARA TRÁS NOUTRA) -->
+      <forward>1 0 0</forward>
+      <upward>0 1 0</upward>
+      <link_name>front_left_propeller</link_name>
+    </plugin>
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.3</a0>
+      <alpha_stall>1.4</alpha_stall>
+      <cla>4.2500</cla>
+      <cda>0.10</cda>
+      <cma>0.0</cma>
+      <cla_stall>-0.025</cla_stall>
+      <cda_stall>0.0</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <area>0.008</area>
+      <air_density>1.2041</air_density>
+      <cp>0 0 -0.267</cp> <!--<cp>0 0 -0.267</cp>-->
+      <forward>-1 0 0</forward> 
+      <upward>0 1 0</upward>
+      <link_name>front_left_propeller</link_name>
+    </plugin>
+
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.3</a0>
+      <alpha_stall>1.4</alpha_stall>
+      <cla>4.2500</cla>
+      <cda>0.10</cda>
+      <cma>0.0</cma>
+      <cla_stall>-0.025</cla_stall>
+      <cda_stall>0.0</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <area>0.008</area>
+      <air_density>1.2041</air_density>
+      <cp>0 0 0.267</cp> <!--<cp>0 0 0.267</cp>-->
+      <forward>-1 0 0</forward> <!--Depois verificar o forward melhor (aka se não voar pode ser disto)-->
+      <upward>0 1 0</upward>
+      <link_name>front_right_propeller</link_name>
+    </plugin>
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.3</a0>
+      <alpha_stall>1.4</alpha_stall>
+      <cla>4.2500</cla>
+      <cda>0.10</cda>
+      <cma>0.0</cma>
+      <cla_stall>-0.025</cla_stall>
+      <cda_stall>0.0</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <area>0.008</area>
+      <air_density>1.2041</air_density>
+      <cp>0 0 -0.267</cp> <!--<cp>0 0 -0.267</cp>-->
+      <forward>1 0 0</forward>
+      <upward>0 1 0</upward>
+      <link_name>front_right_propeller</link_name>
+    </plugin>
+
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.3</a0>
+      <alpha_stall>1.4</alpha_stall>
+      <cla>4.2500</cla>
+      <cda>0.10</cda>
+      <cma>0.0</cma>
+      <cla_stall>-0.025</cla_stall>
+      <cda_stall>0.0</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <area>0.008</area>
+      <air_density>1.2041</air_density>
+      <cp>0 0 0.267</cp> <!--<cp>0 0 0.267</cp>-->
+      <forward>-1 0 0</forward>
+      <upward>0 1 0</upward>
+      <link_name>back_left_propeller</link_name>
+    </plugin>
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.3</a0>
+      <alpha_stall>1.4</alpha_stall>
+      <cla>4.2500</cla>
+      <cda>0.10</cda>
+      <cma>0.0</cma>
+      <cla_stall>-0.025</cla_stall>
+      <cda_stall>0.0</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <area>0.008</area>
+      <air_density>1.2041</air_density>
+      <cp>0 0 -0.267</cp> <!--<cp>0 0 -0.267</cp>-->
+      <forward>1 0 0</forward>
+      <upward>0 1 0</upward>
+      <link_name>back_left_propeller</link_name>
+    </plugin>
+
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.3</a0>
+      <alpha_stall>1.4</alpha_stall>
+      <cla>4.2500</cla>
+      <cda>0.10</cda>
+      <cma>0.0</cma>
+      <cla_stall>-0.025</cla_stall>
+      <cda_stall>0.0</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <area>0.008</area>
+      <air_density>1.2041</air_density>
+      <cp>0 0 0.267</cp> <!--<cp>0 0 0.267</cp>-->
+      <forward>1 0 0</forward>
+      <upward>0 1 0</upward>
+      <link_name>back_right_propeller</link_name>
+    </plugin>
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.3</a0>
+      <alpha_stall>1.4</alpha_stall>
+      <cla>4.2500</cla>
+      <cda>0.10</cda>
+      <cma>0.0</cma>
+      <cla_stall>-0.025</cla_stall>
+      <cda_stall>0.0</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <area>0.008</area>
+      <air_density>1.2041</air_density>
+      <cp>0 0 -0.267</cp> <!--<cp>0 0 -0.267</cp>-->
+      <forward>-1 0 0</forward>
+      <upward>0 1 0</upward>
+      <link_name>back_right_propeller</link_name>
+    </plugin>
+
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.3</a0>
+      <alpha_stall>1.4</alpha_stall>
+      <cla>4.2500</cla>
+      <cda>0.10</cda>
+      <cma>0.0</cma>
+      <cla_stall>-0.025</cla_stall>
+      <cda_stall>0.0</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <area>0.164245</area>
+      <air_density>1.2041</air_density>
+      <cp>0 0 0.22865</cp> <!--<cp>0 0 0.22865</cp>-->
+      <forward>1 0 0</forward>
+      <upward>0 1 0</upward>
+      <link_name>pusher_propeller</link_name>
+    </plugin>
+    <plugin filename="gz-sim-lift-drag-system"
+        name="gz::sim::systems::LiftDrag">
+      <a0>0.3</a0>
+      <alpha_stall>1.4</alpha_stall>
+      <cla>4.2500</cla>
+      <cda>0.10</cda>
+      <cma>0.0</cma>
+      <cla_stall>-0.025</cla_stall>
+      <cda_stall>0.0</cda_stall>
+      <cma_stall>0.0</cma_stall>
+      <area>0.164245</area>
+      <air_density>1.2041</air_density>
+      <cp>0 0 -0.22865</cp> <!--<cp>0 0 -0.22865</cp>-->
+      <forward>1 0 0</forward>
+      <upward>0 1 0</upward>
+      <link_name>pusher_propeller</link_name>
+    </plugin>    
+
+    <!-- PLUGIN ARDUPILOT -->
+    <!-- <plugin name="gazebo_ardupilot_plugin" filename="libgazebo_ardupilot_plugin.so">
+      <fdm_addr>127.0.0.1</fdm_addr>
+      <fdm_port_in>9003</fdm_port_in>
+      <fdm_port_out>9002</fdm_port_out>
+      <fdm_baudrate>921600</fdm_baudrate>
+    </plugin> -->
+
+    <plugin name="ArduPilotPlugin"
+      filename="ArduPilotPlugin">
+      <!-- Port settings -->
+      <fdm_addr>127.0.0.1</fdm_addr>
+      <fdm_port_in>9002</fdm_port_in>
+      <connectionTimeoutMaxCount>5</connectionTimeoutMaxCount>
+      <lock_step>1</lock_step>
+
+      <!-- Frame conventions
+        Require by ArduPilot: change model and gazebo from XYZ to XY-Z coordinates
+      --> 
+      <modelXYZToAirplaneXForwardZDown degrees="true">0 0 0 90 -90 0</modelXYZToAirplaneXForwardZDown> <!-- 0 0 0 90 -90 0 -->
+      <gazeboXYZToNED degrees="true">0 0 0 180 0 0</gazeboXYZToNED> <!-- 0 0 0 180 0 90 -->
+
+      <!-- Sensors --> <!-- Apenas para replicar o que estava num modelo oficial e garantir que esta tudo ok-->
+      <imuName>corpo::imu_sensor</imuName>
+
+      <!--
+          incoming control command [0, 1]
+          so offset it by 0 to get [0, 1]
+          and divide max target by 1.
+          offset = 0
+          multiplier = 838 max rpm / 1 = 838
+        -->
+
+      <control channel="0">
+          <multiplier>1</multiplier>
+          <offset>-0.5</offset>
+          <type>POSITION</type>
+          <p_gain>2.5</p_gain>
+          <i_gain>0</i_gain>
+          <d_gain>0</d_gain>
+          <i_max>0</i_max>
+          <i_min>0</i_min>
+          <cmd_max>1</cmd_max>
+          <cmd_min>-1</cmd_min>
+        <jointName>joint_left_aileron_hinge</jointName>
+      </control>
+
+      <control channel="1">
+          <multiplier>1</multiplier>
+          <offset>-0.5</offset>
+          <type>POSITION</type>
+          <p_gain>2.5</p_gain>
+          <i_gain>0</i_gain>
+          <d_gain>0</d_gain>
+          <i_max>0</i_max>
+          <i_min>0</i_min>
+          <cmd_max>1</cmd_max>
+          <cmd_min>-1</cmd_min>
+        <jointName>joint_right_aileron_hinge</jointName>
+      </control>
+
+      <control channel="2">
+          <multiplier>1</multiplier>
+          <offset>-0.5</offset>
+          <type>POSITION</type>
+          <p_gain>2.5</p_gain>
+          <i_gain>0</i_gain>
+          <d_gain>0</d_gain>
+          <i_max>0</i_max>
+          <i_min>0</i_min>
+          <cmd_max>1</cmd_max>
+          <cmd_min>-1</cmd_min>
+        <jointName>joint_left_elevator_hinge</jointName>
+      </control>
+
+      <control channel="3">
+          <multiplier>1</multiplier>
+          <offset>-0.5</offset>
+          <type>POSITION</type>
+          <p_gain>2.5</p_gain>
+          <i_gain>0</i_gain>
+          <d_gain>0</d_gain>
+          <i_max>0</i_max>
+          <i_min>0</i_min>
+          <cmd_max>1</cmd_max>
+          <cmd_min>-1</cmd_min>
+        <jointName>joint_right_elevator_hinge</jointName>
+      </control>
+
+      <control channel="4">
+        <multiplier>1000</multiplier>
+        <offset>0</offset>
+        <type>VELOCITY</type>
+        <p_gain>0.2</p_gain>
+        <i_gain>0.2</i_gain>
+        <d_gain>0.0</d_gain>
+        <i_max>0</i_max>
+        <i_min>0</i_min>
+        <cmd_max>2.5</cmd_max>
+        <cmd_min>-2.5</cmd_min>
+        <jointName>joint_propeller_1</jointName>
+        <rotorVelocitySlowdownSim>1</rotorVelocitySlowdownSim>
+      </control>
+
+      <control channel="5">
+        <multiplier>1000</multiplier>
+        <offset>0</offset>
+        <type>VELOCITY</type>
+        <p_gain>0.2</p_gain>
+        <i_gain>0.2</i_gain>
+        <d_gain>0.0</d_gain>
+        <i_max>0</i_max>
+        <i_min>0</i_min>
+        <cmd_max>2.5</cmd_max>
+        <cmd_min>-2.5</cmd_min>
+        <jointName>joint_propeller_2</jointName>
+        <rotorVelocitySlowdownSim>1</rotorVelocitySlowdownSim>
+      </control>
+
+      <control channel="6">
+        <multiplier>1000</multiplier>
+        <offset>0</offset>
+        <type>VELOCITY</type>
+        <p_gain>0.2</p_gain>
+        <i_gain>0.2</i_gain>
+        <d_gain>0.0</d_gain>
+        <i_max>0</i_max>
+        <i_min>0</i_min>
+        <cmd_max>2.5</cmd_max>
+        <cmd_min>-2.5</cmd_min>
+        <jointName>joint_propeller_3</jointName>
+        <rotorVelocitySlowdownSim>1</rotorVelocitySlowdownSim>
+      </control>
+
+      <control channel="7">
+        <multiplier>1000</multiplier>
+        <offset>0</offset>
+        <type>VELOCITY</type>
+        <p_gain>0.2</p_gain>
+        <i_gain>0.2</i_gain>
+        <d_gain>0.0</d_gain>
+        <i_max>0</i_max>
+        <i_min>0</i_min>
+        <cmd_max>2.5</cmd_max>
+        <cmd_min>-2.5</cmd_min>
+        <jointName>joint_propeller_4</jointName>
+        <rotorVelocitySlowdownSim>1</rotorVelocitySlowdownSim>
+      </control>
+
+      <control channel="8">
+        <multiplier>1000</multiplier>
+        <offset>0</offset>
+        <type>VELOCITY</type>
+        <p_gain>0.2</p_gain>
+        <i_gain>0.2</i_gain>
+        <d_gain>0.0</d_gain>
+        <i_max>0</i_max>
+        <i_min>0</i_min>
+        <cmd_max>2.5</cmd_max>
+        <cmd_min>-2.5</cmd_min>
+        <jointName>joint_pusher</jointName>
+        <rotorVelocitySlowdownSim>1</rotorVelocitySlowdownSim>
+      </control>
+
+      <!-- roll range is -30 to +30 deg -->
+      <control channel="9">
+        <jointName>roll_joint</jointName>
+        <multiplier>1.047197551196</multiplier>
+        <offset>-0.5</offset>
+        <servo_min>1100</servo_min>
+        <servo_max>1900</servo_max>
+        <type>COMMAND</type>
+        <cmd_topic>/gimbal/cmd_roll</cmd_topic>
+        <p_gain>2</p_gain>
+      </control>
+
+      <!-- pitch range is -135 to +45 deg -->
+      <control channel="10">
+        <jointName>pitch_joint</jointName>
+        <multiplier>-3.14159265</multiplier>
+        <offset>-0.75</offset>
+        <servo_min>1100</servo_min>
+        <servo_max>1900</servo_max>
+        <type>COMMAND</type>
+        <cmd_topic>/gimbal/cmd_pitch</cmd_topic>
+        <p_gain>2</p_gain>
+      </control>
+
+      <!-- yaw range is -160 to +160 deg -->
+      <control channel="11">
+        <jointName>yaw_joint</jointName>
+        <multiplier>-5.5850536</multiplier>
+        <offset>-0.5</offset>
+        <servo_min>1100</servo_min>
+        <servo_max>1900</servo_max>
+        <type>COMMAND</type>
+        <cmd_topic>/gimbal/cmd_yaw</cmd_topic>
+        <p_gain>2</p_gain>
+      </control>
+      
+    </plugin>
+
+    <plugin
+      filename="gz-sim-joint-position-controller-system"
+      name="gz::sim::systems::JointPositionController">
+      <joint_name>roll_joint</joint_name>
+      <topic>/gimbal/cmd_roll</topic> <!--Especifica o tópico que quer ouvir-->
+      <p_gain>2</p_gain>
+    </plugin>
+    <plugin
+      filename="gz-sim-joint-position-controller-system"
+      name="gz::sim::systems::JointPositionController">
+      <joint_name>pitch_joint</joint_name>
+      <topic>/gimbal/cmd_pitch</topic>
+      <p_gain>2</p_gain>
+    </plugin>
+    <plugin
+      filename="gz-sim-joint-position-controller-system"
+      name="gz::sim::systems::JointPositionController">
+      <joint_name>yaw_joint</joint_name>
+      <topic>/gimbal/cmd_yaw</topic>
+      <p_gain>2</p_gain>
+    </plugin>
+
+  </model>
+</sdf>
+
+<!--DÚVIDAS - Ver linhas: 370, 381, 453, 466 (tenho de ver no teu modelo a quantidade de pormenor que tens e como fazes o ardupilot)-->
+<!--AS POSIÇÕES DAS COISAS NEM FAZEM SENTIDO, ISTO PARECE NÃO SER PROPORCIONAL SEQUER :((((( -->
+
+<!--DÚVIDA NA LINHA 664-->
+
+<!-- btw depois preciso de acabar de acertar de forma mais pormenorizada as peças,
+principalmente as helices ligeiramente mais para baixo todas e as de trás ligeiramente mais para a frente e o pusher também- - FEITO-->
