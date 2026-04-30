@@ -43,19 +43,22 @@ chmod +x ~/ros2_humble.sh
 
 ```bash
 ssh deec@10.16.140.68
-# password: deecrobots
+```
 
+
+```bash
 ros2 launch alphabot2 alphabot2_launch.py
 ```
 
 ---
 
-### Terminal 2 — Launch motion driver
+### Terminal 2 — Launch motion driver 
 
 ```bash
 ssh deec@10.16.140.68
-# password: deecrobots
+```
 
+```bash
 ros2 run alphabot2 motion_driver
 ```
 
@@ -73,10 +76,27 @@ You are now inside the container with ROS 2 ready.
 
 ---
 
-## 🔍 5. Verify Connection
+## 6. Basic Control Commands
 
-Inside the Docker container:
+### Publish velocity commands
 
 ```bash
-ros2 topic list
+ros2 topic pub --rate 1 /alphabot2/cmd_vel geometry_msgs/msg/Twist \
+"{linear: {x: 1.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 5.0}}"
+```
+
+---
+
+### Keyboard teleoperation
+
+```bash
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
+---
+
+### View camera feed
+
+```bash
+ros2 run rqt_image_view rqt_image_view
 ```
