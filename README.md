@@ -1,14 +1,46 @@
-# Guide for Alphabot control
+Here’s your updated **README section**, now including Docker installation (Ubuntu 24 + Windows) and the ROS image setup, cleanly integrated:
 
-## 1. Create Docker Launch Script
+---
 
-Create a reusable script so you don’t have to type everything every time.
+# Docker + ROS 2 Humble Setup
+
+## Install Docker
+
+### Ubuntu 24.04
+
+```bash
+sudo apt update
+sudo apt install docker.io -y
+sudo systemctl enable --now docker
+```
+
+---
+
+### Windows
+
+Install Docker Desktop:
+
+1. Download from the official website
+2. Install and open Docker Desktop
+3. Enable **WSL 2 integration** when prompted
+
+---
+
+## Step 1 — Pull the ROS 2 Humble Image
+
+```bash
+docker pull osrf/ros:humble-desktop-full
+```
+
+---
+
+## Step 2 — Create a Launch Script
 
 ```bash
 nano ~/ros2_humble.sh
 ```
 
-Paste the following (replace `ROS_DOMAIN_ID` with your robot ID if needed):
+Paste:
 
 ```bash
 #!/bin/bash
@@ -25,9 +57,7 @@ docker run -it --rm \
   bash -c "source /opt/ros/humble/setup.bash && bash"
 ```
 
----
-
-## 2. Make Script Executable
+Make it executable:
 
 ```bash
 chmod +x ~/ros2_humble.sh
@@ -35,9 +65,7 @@ chmod +x ~/ros2_humble.sh
 
 ---
 
-## 3. Connect to the Robot
-
----
+## Robot Connection & Operation
 
 ### Terminal 1 — Launch main drivers
 
@@ -45,14 +73,13 @@ chmod +x ~/ros2_humble.sh
 ssh deec@10.16.140.68
 ```
 
-
 ```bash
 ros2 launch alphabot2 alphabot2_launch.py
 ```
 
 ---
 
-### Terminal 2 — Launch motion driver 
+### Terminal 2 — Launch motion driver
 
 ```bash
 ssh deec@10.16.140.68
@@ -72,7 +99,19 @@ Open a **third terminal**:
 ~/ros2_humble.sh
 ```
 
-You are now inside the container with ROS 2 ready.
+You are now inside the Docker container with ROS 2 ready.
+
+---
+
+## 🔍 5. Verify Connection
+
+Inside the Docker container:
+
+```bash
+ros2 topic list
+```
+
+You should see active topics from the robot.
 
 ---
 
