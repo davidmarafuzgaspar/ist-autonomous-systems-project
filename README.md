@@ -1,12 +1,10 @@
-Here’s your updated **README section**, now including Docker installation (Ubuntu 24 + Windows) and the ROS image setup, cleanly integrated:
+# AlphaBot2 + ROS 2 (Docker + Foxglove) Setup
 
 ---
 
-# Docker + ROS 2 Humble Setup
+# Part 1 — Installation
 
-## Install Docker
-
-### Ubuntu 24.04
+## 1. Install Docker (Ubuntu 24.04)
 
 ```bash
 sudo apt update
@@ -14,27 +12,28 @@ sudo apt install docker.io -y
 sudo systemctl enable --now docker
 ```
 
----
-
-### Windows
-
-Install Docker Desktop:
-
-1. Download from the official website
-2. Install and open Docker Desktop
-3. Enable **WSL 2 integration** when prompted
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
 
 ---
 
-## Step 1 — Pull the ROS 2 Humble Image
+## 2. Pull ROS 2 Humble Docker Image
 
 ```bash
 docker pull osrf/ros:humble-desktop-full
 ```
 
+This image includes:
+
+* ROS 2 Humble
+* RViz2
+* RQT tools
+
 ---
 
-## Step 2 — Create a Launch Script
+## 3. Create Docker Launch Script
 
 ```bash
 nano ~/ros2_humble.sh
@@ -65,9 +64,41 @@ chmod +x ~/ros2_humble.sh
 
 ---
 
-## Robot Connection & Operation
+## 4. Install Foxglove Studio (GUI)
 
-### Terminal 1 — Launch main drivers
+Download and install Foxglove Studio from the official website:
+
+
+```bash
+sudo snap install foxglove-studio
+```
+
+---
+
+## 5. Install Foxglove Bridge (inside Docker)
+
+Start your container:
+
+```bash
+~/ros2_humble.sh
+```
+
+Inside the container:
+
+```bash
+apt update
+apt install ros-humble-foxglove-bridge
+```
+
+---
+
+# Part 2 — System Usage
+
+---
+
+## 1. Start the Robot
+
+### Terminal 1 — Main drivers
 
 ```bash
 ssh deec@10.16.140.68
@@ -79,7 +110,7 @@ ros2 launch alphabot2 alphabot2_launch.py
 
 ---
 
-### Terminal 2 — Launch motion driver
+### Terminal 2 — Motion driver
 
 ```bash
 ssh deec@10.16.140.68
@@ -91,33 +122,79 @@ ros2 run alphabot2 motion_driver
 
 ---
 
-## 4. Start Your Docker ROS 2 Environment
+## 2. Start Docker ROS Environment
 
-Open a **third terminal**:
+### Terminal 3
 
 ```bash
 ~/ros2_humble.sh
 ```
 
-You are now inside the Docker container with ROS 2 ready.
+---
+
+## 3. Load Robot Workspace
+
+If using custom messages (e.g. obstacles) inside docker:
+
+```bash
+cd ~/ros2_ws
+source install/setup.bash
+```
 
 ---
 
-## 🔍 5. Verify Connection
+## 4. Start Foxglove Bridge
 
-Inside the Docker container:
+Inside Docker:
+
+```bash
+ros2 run foxglove_bridge foxglove_bridge
+```
+
+You should see:
+
+```text
+Server listening on port 8765
+```
+
+---
+
+## 5. Connect Foxglove Studio
+
+Open Foxglove Studio:
+
+* Click **Open Connection**
+* Select **WebSocket**
+* Enter:
+
+```text
+ws://localhost:8765
+```
+
+---
+
+## 6. Verify ROS Connection
+
+Inside Docker:
 
 ```bash
 ros2 topic list
 ```
 
-You should see active topics from the robot.
+You should see topics like:
+
+* `/alphabot2/cmd_vel`
+* `/alphabot2/image_raw`
+* `/tf`
+* `/alphabot2/obstacles`
 
 ---
 
-## 6. Basic Control Commands
+# Part 3 — Control & Visualization
 
-### Publish velocity commands
+---
+
+## Publish velocity commands
 
 ```bash
 ros2 topic pub --rate 1 /alphabot2/cmd_vel geometry_msgs/msg/Twist \
@@ -126,7 +203,7 @@ ros2 topic pub --rate 1 /alphabot2/cmd_vel geometry_msgs/msg/Twist \
 
 ---
 
-### Keyboard teleoperation
+## Keyboard teleoperation
 
 ```bash
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
@@ -134,8 +211,10 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 ---
 
-### View camera feed
+## Camera visualization (RQT)
 
 ```bash
 ros2 run rqt_image_view rqt_image_view
 ```
+
+---
