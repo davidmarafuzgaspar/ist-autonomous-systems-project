@@ -159,6 +159,9 @@ These are ROS packages that provide:
 
 ```bash
 ssh deec@10.16.140.68
+```
+
+```bash
 ros2 launch alphabot2 alphabot2_launch.py
 ```
 
@@ -168,6 +171,9 @@ ros2 launch alphabot2 alphabot2_launch.py
 
 ```bash
 ssh deec@10.16.140.68
+```
+
+```bash
 ros2 run alphabot2 motion_driver
 ```
 
