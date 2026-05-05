@@ -1,9 +1,8 @@
-
-# AlphaBot2 + ROS 2 (Docker + Foxglove) Setup — Improved Version
+# AlphaBot2 + ROS 2 (Docker + Foxglove) Setup
 
 ---
 
-# Part 1 — Installation
+# 1. Setup (One-time installation)
 
 ## 1. Install Docker (Ubuntu 24.04)
 
@@ -20,23 +19,15 @@ newgrp docker
 
 ---
 
-## 2. Pull ROS 2 Humble Base Image
+## 2. Pull base ROS 2 image
 
 ```bash
 docker pull osrf/ros:humble-desktop-full
 ```
 
-Includes:
-
-* ROS 2 Humble
-* RViz2
-* RQT tools
-
 ---
 
-## 3. (IMPORTANT) Create a Persistent ROS + AlphaBot Image
-
-Instead of installing tools every time, we bake them into an image.
+## 3. Create persistent ROS + AlphaBot image
 
 ```bash
 mkdir ~/alphabot_docker
@@ -44,27 +35,25 @@ cd ~/alphabot_docker
 nano Dockerfile
 ```
 
-### 📦 Dockerfile
+### Dockerfile
 
 ```dockerfile
 FROM osrf/ros:humble-desktop-full
 
-# Install useful ROS tools
 RUN apt update && apt install -y \
     ros-humble-foxglove-bridge \
     ros-humble-teleop-twist-keyboard \
     ros-humble-rqt-image-view \
     && rm -rf /var/lib/apt/lists/*
 
-# Auto-source ROS
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
 
-WORKDIR /ros2_ws
+WORKDIR /alphabot2_ws
 ```
 
 ---
 
-## 4. Build the Image (ONE TIME)
+## 4. Build Docker image (one time only)
 
 ```bash
 docker build -t alphabot2_ros2 .
@@ -72,13 +61,13 @@ docker build -t alphabot2_ros2 .
 
 ---
 
-## 5. Create One-Command Launcher
+## 5. Create runtime launcher script
 
 ```bash
 nano ~/run_alphabot.sh
 ```
 
-### Run Script
+### Script
 
 ```bash
 #!/bin/bash
@@ -92,7 +81,7 @@ docker run -it --rm \
   -e ROS_DOMAIN_ID=$ROS_DOMAIN_ID \
   -e DISPLAY=$DISPLAY \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
-  -v ~/alphabot2_ws_src:/ros2_ws \
+  -v ~/alphabot2_ws:/alphabot2_ws \
   alphabot2_ros2
 ```
 
@@ -104,18 +93,7 @@ chmod +x ~/run_alphabot.sh
 
 ---
 
-## ✅ Now you NEVER reinstall anything again
-
-Change domain (if needed) and run:
-
-
-```bash
-ROS_DOMAIN_ID=12 ~/run_alphabot.sh
-```
-
----
-
-## 6. Install Foxglove Studio (Host Machine)
+## 6. Install Foxglove Studio (host machine)
 
 ```bash
 sudo snap install foxglove-studio
@@ -123,13 +101,61 @@ sudo snap install foxglove-studio
 
 ---
 
-# Part 2 — System Usage
+# 2. Workspace Setup (ROS 2 Development Workspace)
 
 ---
 
-## 1. Start Robot (SSH)
+## 2.1 Create the workspace directory
 
-### Terminal 1 — Main drivers
+On your PC, create the main workspace folder:
+
+```bash id="ws1"
+mkdir -p ~/alphabot2_ws/src
+```
+
+This creates:
+
+```text id="ws2"
+~/alphabot2_ws/
+ └── src/
+```
+
+## 2.3 Add your robot source code
+
+You now need to place your AlphaBot2 software into `src/`.
+
+If you already have it on your robot, copy it once to your PC:
+
+```bash id="ws4"
+scp -r deec@10.16.140.68:~/alphabot2_ws/src ~/alphabot2_ws/
+```
+
+After this, your structure becomes:
+
+```text id="ws5"
+~/alphabot2_ws/src
+ ├── alphabot2-ros2
+ ├── image_common
+ ├── image_transport_plugins
+ ├── ros2_v4l2_camera
+ ├── vision_opencv
+```
+
+These are ROS packages that provide:
+
+* robot control (alphabot2-ros2)
+* camera drivers (v4l2_camera)
+* image processing (opencv, image_transport)
+
+---
+
+# 3. Usage (Every session workflow)
+
+---
+
+## 1. Start robot system (SSH)
+
+### Terminal 1 — main robot drivers
 
 ```bash
 ssh deec@10.16.140.68
@@ -138,7 +164,7 @@ ros2 launch alphabot2 alphabot2_launch.py
 
 ---
 
-### Terminal 2 — Motion driver
+### Terminal 2 — motion driver
 
 ```bash
 ssh deec@10.16.140.68
@@ -147,60 +173,68 @@ ros2 run alphabot2 motion_driver
 
 ---
 
-## 2. Start ROS Docker Environment
+## 2. Start ROS Docker environment (local machine)
 
 ### Terminal 3
 
 ```bash
-~/run_alphabot.sh
+ROS_DOMAIN_ID=12 ~/run_alphabot.sh
 ```
 
 ---
 
-## 3. Load Workspace (inside Docker)
+## 3. Build workspace (only if code changed)
+
+Inside Docker:
 
 ```bash
-cd /ros2_ws
+cd /alphabot2_ws
+colcon build
+```
+
+Then source:
+
+```bash
 source install/setup.bash
 ```
 
 ---
 
-## 4. Start Foxglove Bridge (inside Docker)
+## 4. Start Foxglove bridge (inside Docker)
 
 ```bash
 ros2 run foxglove_bridge foxglove_bridge
 ```
 
-You should see:
+Expected:
 
-```text
+```
 Server listening on port 8765
 ```
 
 ---
 
-## 5. Connect Foxglove Studio
+## 5. Connect Foxglove Studio (host machine)
 
-Open Foxglove Studio:
-
-* Open Connection
-* WebSocket
+* Open Foxglove Studio
+* WebSocket connection
 * Enter:
 
-```text
+```
 ws://localhost:8765
 ```
 
 ---
 
-## 6. Verify ROS Topics
+## 6. Verify ROS communication
+
+Inside Docker:
 
 ```bash
 ros2 topic list
 ```
 
-Expected:
+Expected topics:
 
 * `/alphabot2/cmd_vel`
 * `/alphabot2/image_raw`
@@ -209,11 +243,11 @@ Expected:
 
 ---
 
-# Part 3 — Control & Debug Tools
+# 4. Examples of usage
 
 ---
 
-## Manual velocity control
+## 1. Manual robot movement
 
 ```bash
 ros2 topic pub --rate 1 /alphabot2/cmd_vel geometry_msgs/msg/Twist \
@@ -222,7 +256,7 @@ ros2 topic pub --rate 1 /alphabot2/cmd_vel geometry_msgs/msg/Twist \
 
 ---
 
-## Keyboard control (teleop)
+## 2. Keyboard teleoperation
 
 ```bash
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
@@ -230,8 +264,20 @@ ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 ---
 
-## Camera viewer (RQT)
+## 3. Camera visualization
 
 ```bash
 ros2 run rqt_image_view rqt_image_view
+```
+
+Used for:
+
+* `/alphabot2/image_raw`
+
+---
+
+## 4. Change ROS network domain
+
+```bash
+ROS_DOMAIN_ID=12 ~/run_alphabot.sh
 ```
