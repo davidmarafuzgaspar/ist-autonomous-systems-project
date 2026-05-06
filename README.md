@@ -30,8 +30,8 @@ docker pull osrf/ros:humble-desktop-full
 ## 3. Create persistent ROS + AlphaBot image
 
 ```bash
-mkdir ~/alphabot_docker
-cd ~/alphabot_docker
+mkdir ~/alphabot2_docker
+cd ~/alphabot2_docker
 nano Dockerfile
 ```
 
@@ -44,6 +44,8 @@ RUN apt update && apt install -y \
     ros-humble-foxglove-bridge \
     ros-humble-teleop-twist-keyboard \
     ros-humble-rqt-image-view \
+    git \
+    python3-colcon-common-extensions \
     && rm -rf /var/lib/apt/lists/*
 
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
@@ -64,7 +66,7 @@ docker build -t alphabot2_ros2 .
 ## 5. Create runtime launcher script
 
 ```bash
-nano ~/run_alphabot.sh
+nano ~/run_alphabot2.sh
 ```
 
 ### Script
@@ -88,7 +90,7 @@ docker run -it --rm \
 Make executable:
 
 ```bash
-chmod +x ~/run_alphabot.sh
+chmod +x ~/run_alphabot2.sh
 ```
 
 ---
@@ -105,47 +107,72 @@ sudo snap install foxglove-studio
 
 ---
 
-## 2.1 Create the workspace directory
+## 2.1 Create workspace directory
 
-On your PC, create the main workspace folder:
+All ROS packages MUST live inside the `src` folder:
 
-```bash id="ws1"
+```bash
 mkdir -p ~/alphabot2_ws/src
 ```
 
-This creates:
+Result:
 
-```text id="ws2"
+```text
 ~/alphabot2_ws/
  └── src/
 ```
 
-## 2.3 Add your robot source code
+---
 
-You now need to place your AlphaBot2 software into `src/`.
+## 2.2 Add your robot source code (IMPORTANT)
 
-If you already have it on your robot, copy it once to your PC:
+You now have TWO valid options.
 
-```bash id="ws4"
+---
+
+### Option A (recommended): Clone from Git
+
+This is the correct long-term workflow.
+
+```bash
+cd ~/alphabot2_ws/src
+git clone https://github.com/Mik3Rizzo/alphabot2-ros2.git
+```
+
+Result:
+
+```text
+~/alphabot2_ws/src/
+ └── alphabot2-ros2/
+     ├── alphabot2
+     ├── alphabot2_interfaces
+     ├── docs
+```
+
+---
+
+### Option B (only once): Copy from robot
+
+Use only if Git is not available:
+
+```bash
 scp -r deec@10.16.140.68:~/alphabot2_ws/src ~/alphabot2_ws/
 ```
 
-After this, your structure becomes:
+---
 
-```text id="ws5"
-~/alphabot2_ws/src
- ├── alphabot2-ros2
- ├── image_common
- ├── image_transport_plugins
- ├── ros2_v4l2_camera
- ├── vision_opencv
+## 2.3 Final workspace structure
+
+```text
+~/alphabot2_ws/
+ ├── src/
+ │   └── alphabot2-ros2/
+ │       ├── alphabot2
+ │       ├── alphabot2_interfaces
+ ├── build/
+ ├── install/
+ ├── log/
 ```
-
-These are ROS packages that provide:
-
-* robot control (alphabot2-ros2)
-* camera drivers (v4l2_camera)
-* image processing (opencv, image_transport)
 
 ---
 
@@ -184,7 +211,7 @@ ros2 run alphabot2 motion_driver
 ### Terminal 3
 
 ```bash
-ROS_DOMAIN_ID=12 ~/run_alphabot.sh
+ROS_DOMAIN_ID=68 ~/run_alphabot2.sh
 ```
 
 ---
@@ -212,7 +239,7 @@ source install/setup.bash
 ros2 run foxglove_bridge foxglove_bridge
 ```
 
-Expected:
+Expected output:
 
 ```
 Server listening on port 8765
@@ -223,7 +250,7 @@ Server listening on port 8765
 ## 5. Connect Foxglove Studio (host machine)
 
 * Open Foxglove Studio
-* WebSocket connection
+* Select WebSocket connection
 * Enter:
 
 ```
@@ -285,5 +312,16 @@ Used for:
 ## 4. Change ROS network domain
 
 ```bash
-ROS_DOMAIN_ID=12 ~/run_alphabot.sh
+ROS_DOMAIN_ID=68 ~/run_alphabot2.sh
 ```
+
+---
+
+# Key rule to remember
+
+* Git repo goes in: `~/alphabot2_ws/src/`
+* Docker mounts: whole `~/alphabot2_ws`
+* Robot runs hardware nodes
+* Docker processes and visualizes data
+
+---
