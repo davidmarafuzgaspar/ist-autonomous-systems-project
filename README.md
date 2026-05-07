@@ -365,5 +365,39 @@ cd ~/alphabot2-ros2
 colcon build --packages-select alphabot2
 source install/setup.bash
 ```
+
+# AlphaBot2 Line Tracking Node Setup
+
+---
+##  1) No meu PC tenho os ficheiros line_tracker.py e setup.py
+
+```exemplo
+cd "/home/pedro/Desktop/MEEC/Sem 2/SAut/alphabot2-ros2"
+```
+
+##  2) Enviar os ficheiros para o robô
+```copy
+scp "alphabot2/alphabot2/line_tracker.py" "deec@<IP_DO_ROBO>:~/alphabot2-ros2/alphabot2/alphabot2/"
+scp "alphabot2/setup.py" "deec@<IP_DO_ROBO>:~/alphabot2-ros2/alphabot2/"
+```
+
+## 3) Já no robô, compilar e correr
+```terminal
+ssh deec@<IP_DO_ROBO>
+cd ~/alphabot2-ros2
+colcon build --packages-select alphabot2
+source install/setup.bash
+ros2 run alphabot2 line_tracker
+```
+
+
+# 4) Noutro terminal no robô, ver tópico (para confirmar)
+```terminal
+ssh deec@<IP_DO_ROBO>
+cd ~/alphabot2-ros2
+source install/setup.bash
+ros2 topic echo /line_tracking
+```
+
 ---
 
