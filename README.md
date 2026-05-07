@@ -391,7 +391,7 @@ ros2 run alphabot2 line_tracker
 ```
 
 
-# 4) Noutro terminal no robô, ver tópico (para confirmar)
+## 4) Noutro terminal no robô, ver tópico (para confirmar)
 ```terminal
 ssh deec@<IP_DO_ROBO>
 cd ~/alphabot2-ros2
