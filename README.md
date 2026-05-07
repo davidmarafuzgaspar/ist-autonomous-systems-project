@@ -325,3 +325,45 @@ ROS_DOMAIN_ID=68 ~/run_alphabot2.sh
 * Docker processes and visualizes data
 
 ---
+# Calibração da Câmara
+
+O ficheiro da calibração está aqui no meu PC:
+```bash
+cat /tmp/ost.yaml
+```
+
+Para passar para o alphabot2 tem de se correr (NÃO ESQUECER DE MUDAR O ID DO ALPHABOT2):
+```bash
+scp /tmp/ost.yaml deec@10.16.140.68:~/camera_info.yaml
+```
+
+depois modificar o lauch file no alphabot2:
+```bash
+nano ~/alphabot2-ros2/alphabot2/launch/alphabot2_launch.py
+```
+Deve ser alterado para:
+
+```bash
+v4l2_camera_node = Node(
+    package="v4l2_camera",
+    namespace=NAMESPACE,
+    executable="v4l2_camera_node",
+    output="screen",
+    emulate_tty=True,
+    arguments=['--ros-args',
+               '--log-level', V4L2_CAMERA_LOG_LVL],
+    parameters=[{
+        'image_size': [320, 240],
+        'camera_info_url': 'file:///home/deec/camera_info.yaml',
+    }],
+)
+```
+
+Concluir com dar colcon build:
+```bash
+cd ~/alphabot2-ros2
+colcon build --packages-select alphabot2
+source install/setup.bash
+```
+---
+
