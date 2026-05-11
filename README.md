@@ -366,37 +366,37 @@ colcon build --packages-select alphabot2
 source install/setup.bash
 ```
 
-# AlphaBot2 Line Tracking Node Setup
+# AlphaBot2 Node Setup and Development
 
 ---
-##  1) No meu PC tenho os ficheiros line_tracker.py e setup.py
+## 1) Entrar na pasta do repositório
 
-```exemplo
-cd "/home/pedro/Desktop/MEEC/Sem 2/SAut/alphabot2-ros2"
-```
-
-##  2) Enviar os ficheiros para o robô
-```copy
-scp "alphabot2/alphabot2/line_tracker.py" "deec@<IP_DO_ROBO>:~/alphabot2-ros2/alphabot2/alphabot2/"
-scp "alphabot2/setup.py" "deec@<IP_DO_ROBO>:~/alphabot2-ros2/alphabot2/"
-```
-
-## 3) Já no robô, compilar e correr
 ```terminal
-ssh deec@<IP_DO_ROBO>
-cd ~/alphabot2-ros2
+cd /caminho/para/ist-autonomous-systems-project
+```
+
+## 2) Editar os ficheiros no repo
+
+Estrutura relevante:
+
+- `alphabot2_ws/` (workspace ROS 2)
+- `alphabot2_ws/src/alphabot2-ros2/alphabot2/alphabot2/` (nós Python)
+- `alphabot2_ws/src/alphabot2-ros2/alphabot2/setup.py` (configuração do pacote)
+
+## 3) Compilar e correr a partir da pasta do repo
+```terminal
+cd /caminho/para/ist-autonomous-systems-project/alphabot2_ws
 colcon build --packages-select alphabot2
 source install/setup.bash
-ros2 run alphabot2 line_tracker
+ros2 run alphabot2 line_sensors
 ```
 
 
-## 4) Noutro terminal no robô, ver tópico (para confirmar)
+## 4) Noutro terminal, confirmar o tópico
 ```terminal
-ssh deec@<IP_DO_ROBO>
-cd ~/alphabot2-ros2
+cd /caminho/para/ist-autonomous-systems-project/alphabot2_ws
 source install/setup.bash
-ros2 topic echo /line_tracking
+ros2 topic echo /line_sensors
 ```
 
 ---
