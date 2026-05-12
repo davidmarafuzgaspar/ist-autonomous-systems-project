@@ -73,6 +73,7 @@ class SimulationViewer:
     def _draw(self, snapshot) -> None:
         self.canvas.delete("all")
         self._draw_board()
+        self._draw_markers(snapshot)
         self._draw_obstacles()
         self._draw_robot(snapshot)
         self._draw_sidebar(snapshot)
@@ -93,6 +94,42 @@ class SimulationViewer:
             x1, y1 = self._world_to_canvas(half, center)
             self.canvas.create_line(x0, y0, x1, y1, fill="black", width=line_width)
 
+    def _draw_markers(self, snapshot) -> None:
+        visible_marker_ids = {marker.marker_id for marker in snapshot.camera_visible_markers}
+        localized_marker_id = None
+        if snapshot.localized_cell is not None:
+            localized_marker_id = snapshot.localized_cell.marker_id
+
+        marker_half_size_px = max(8.0, self._meters_to_pixels(self.simulation.board.white_cell_size_m() * 0.16))
+        for marker in self.simulation.markers():
+            px, py = self._world_to_canvas(marker.center_m.x, marker.center_m.y)
+
+            fill = "#f4f4f4"
+            outline = "#8a8a8a"
+            if marker.marker_id in visible_marker_ids:
+                fill = "#d6f5d6"
+                outline = "#2a8a2a"
+            if marker.marker_id == localized_marker_id:
+                fill = "#bfe7ff"
+                outline = "#1565c0"
+
+            self.canvas.create_rectangle(
+                px - marker_half_size_px,
+                py - marker_half_size_px,
+                px + marker_half_size_px,
+                py + marker_half_size_px,
+                fill=fill,
+                outline=outline,
+                width=2,
+            )
+            self.canvas.create_text(
+                px,
+                py,
+                text=str(marker.marker_id),
+                fill="#333",
+                font=("Courier New", 8, "bold"),
+            )
+
     def _draw_obstacles(self) -> None:
         for obstacle in self.simulation.obstacles:
             x0, y0 = self._world_to_canvas(obstacle.min_x_m, obstacle.max_y_m)
@@ -103,6 +140,9 @@ class SimulationViewer:
         pose = self.simulation.robot.pose
         radius_px = self._meters_to_pixels(self.simulation.robot.config.radius_m)
         center_x, center_y = self._world_to_canvas(pose.x, pose.y)
+
+        self._draw_camera(snapshot)
+
         self.canvas.create_oval(
             center_x - radius_px,
             center_y - radius_px,
@@ -137,6 +177,36 @@ class SimulationViewer:
             ray_end_px = self._world_to_canvas(end_x, end_y)
             self.canvas.create_line(px, py, ray_end_px[0], ray_end_px[1], fill=color, dash=(4, 2), width=2)
 
+    def _draw_camera(self, snapshot) -> None:
+        camera_position = snapshot.camera_position_m
+        camera_px = self._world_to_canvas(camera_position.x, camera_position.y)
+        fov = self.simulation.robot.config.camera_fov_rad
+        max_range_m = self.simulation.robot.config.camera_max_range_m
+
+        wedge_points = [camera_px]
+        ray_samples = 12
+        for index in range(ray_samples + 1):
+            angle = snapshot.camera_yaw_rad - fov / 2.0 + index * fov / ray_samples
+            end_x = camera_position.x + max_range_m * math.cos(angle)
+            end_y = camera_position.y + max_range_m * math.sin(angle)
+            wedge_points.append(self._world_to_canvas(end_x, end_y))
+
+        flattened_points = [value for point in wedge_points for value in point]
+        self.canvas.create_polygon(
+            flattened_points,
+            fill="",
+            outline="#2979ff",
+            width=2,
+        )
+        self.canvas.create_oval(
+            camera_px[0] - 5,
+            camera_px[1] - 5,
+            camera_px[0] + 5,
+            camera_px[1] + 5,
+            fill="#2979ff",
+            outline="#0d47a1",
+        )
+
     def _draw_sidebar(self, snapshot) -> None:
         left = self.canvas_size_px + 20
         self.canvas.create_text(
@@ -167,6 +237,11 @@ class SimulationViewer:
                 f"{snapshot.obstacle_distances_m[1] if snapshot.obstacle_distances_m[1] is not None else '--'} m"
             ),
             "",
+            "camera localization:",
+            f"camera yaw: {math.degrees(snapshot.camera_yaw_rad):+.1f} deg",
+            f"visible markers: {[marker.marker_id for marker in snapshot.camera_visible_markers[:6]]}",
+            self._localized_cell_text(snapshot),
+            "",
             "controls:",
             "W/S or Up/Down  -> move",
             "A/D or Left/Right -> turn",
@@ -185,4 +260,14 @@ class SimulationViewer:
                 fill="#333",
             )
             y += 24
+
+    def _localized_cell_text(self, snapshot) -> str:
+        if snapshot.localized_cell is None:
+            return "localized: --"
+
+        return (
+            f"localized: cell({snapshot.localized_cell.cell_row}, "
+            f"{snapshot.localized_cell.cell_col}) "
+            f"via {snapshot.localized_cell.marker_id}"
+        )
 

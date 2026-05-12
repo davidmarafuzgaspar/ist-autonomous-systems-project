@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 
-from .board import BLACK, CrossBoard
+from .board import BLACK, CrossBoard, WhiteCell
 from .config import RobotConfig
 from .geometry import Point2D, Pose2D, clamp, transform_point, wrap_angle
 from .obstacles import RectangleObstacle, circle_intersects_rectangle, ray_distance_to_obstacles
@@ -16,6 +16,23 @@ class RobotCommand:
 
 
 @dataclass(frozen=True)
+class CameraDetection:
+    marker_id: int
+    cell_row: int
+    cell_col: int
+    marker_position_m: Point2D
+    distance_m: float
+    bearing_rad: float
+
+
+@dataclass(frozen=True)
+class CellLocalization:
+    marker_id: int
+    cell_row: int
+    cell_col: int
+
+
+@dataclass(frozen=True)
 class SensorSnapshot:
     line_binary: list[int]
     line_analog: list[int]
@@ -23,6 +40,10 @@ class SensorSnapshot:
     obstacle_binary: tuple[int, int]
     obstacle_distances_m: tuple[float | None, float | None]
     obstacle_positions_m: tuple[Point2D, Point2D]
+    camera_position_m: Point2D
+    camera_yaw_rad: float
+    camera_visible_markers: list[CameraDetection]
+    localized_cell: CellLocalization | None
 
 
 @dataclass
@@ -90,6 +111,57 @@ class AlphaBot2Robot:
         )
         return transform_point(local_left, self.pose), transform_point(local_right, self.pose)
 
+    def camera_pose(self) -> tuple[Point2D, float]:
+        local_camera = Point2D(
+            x=self.config.camera_local_x_m,
+            y=self.config.camera_local_y_m,
+        )
+        return (
+            transform_point(local_camera, self.pose),
+            wrap_angle(self.pose.yaw + self.config.camera_yaw_offset_rad),
+        )
+
+    def visible_markers(
+        self,
+        board: CrossBoard,
+        camera_position_m: Point2D,
+        camera_yaw_rad: float,
+    ) -> list[CameraDetection]:
+        visible_markers: list[CameraDetection] = []
+
+        for marker in board.markers():
+            detection = self._marker_detection(marker, camera_position_m, camera_yaw_rad)
+            if detection is not None:
+                visible_markers.append(detection)
+
+        visible_markers.sort(key=lambda item: (item.distance_m, abs(item.bearing_rad), item.marker_id))
+        return visible_markers
+
+    def _marker_detection(
+        self,
+        marker: WhiteCell,
+        camera_position_m: Point2D,
+        camera_yaw_rad: float,
+    ) -> CameraDetection | None:
+        dx = marker.center_m.x - camera_position_m.x
+        dy = marker.center_m.y - camera_position_m.y
+        distance_m = math.hypot(dx, dy)
+        if distance_m > self.config.camera_max_range_m:
+            return None
+
+        bearing_rad = wrap_angle(math.atan2(dy, dx) - camera_yaw_rad)
+        if abs(bearing_rad) > self.config.camera_fov_rad / 2.0:
+            return None
+
+        return CameraDetection(
+            marker_id=marker.marker_id,
+            cell_row=marker.row,
+            cell_col=marker.col,
+            marker_position_m=marker.center_m,
+            distance_m=distance_m,
+            bearing_rad=bearing_rad,
+        )
+
     def read_sensors(self, board: CrossBoard, obstacles: list[RectangleObstacle]) -> SensorSnapshot:
         line_positions = self.line_sensor_positions()
         line_binary = [1 if board.color_at(pos.x, pos.y) == BLACK else 0 for pos in line_positions]
@@ -114,6 +186,21 @@ class AlphaBot2Robot:
             obstacles=obstacles,
         )
 
+        camera_position_m, camera_yaw_rad = self.camera_pose()
+        camera_visible_markers = self.visible_markers(
+            board=board,
+            camera_position_m=camera_position_m,
+            camera_yaw_rad=camera_yaw_rad,
+        )
+        localized_cell = None
+        if camera_visible_markers:
+            best_marker = camera_visible_markers[0]
+            localized_cell = CellLocalization(
+                marker_id=best_marker.marker_id,
+                cell_row=best_marker.cell_row,
+                cell_col=best_marker.cell_col,
+            )
+
         return SensorSnapshot(
             line_binary=line_binary,
             line_analog=line_analog,
@@ -124,5 +211,9 @@ class AlphaBot2Robot:
             ),
             obstacle_distances_m=(left_distance, right_distance),
             obstacle_positions_m=(left_pos, right_pos),
+            camera_position_m=camera_position_m,
+            camera_yaw_rad=camera_yaw_rad,
+            camera_visible_markers=camera_visible_markers,
+            localized_cell=localized_cell,
         )
 

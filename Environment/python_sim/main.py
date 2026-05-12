@@ -19,11 +19,20 @@ def run_headless(steps: int, dt_s: float) -> None:
     simulation.set_command(linear_m_s=0.12, angular_rad_s=0.0)
     for step in range(steps):
         snapshot = simulation.step(dt_s)
+        localized_cell = "--"
+        if snapshot.localized_cell is not None:
+            localized_cell = (
+                f"cell({snapshot.localized_cell.cell_row}, {snapshot.localized_cell.cell_col})"
+                f" via marker {snapshot.localized_cell.marker_id}"
+            )
+
         print(
             f"step={step:03d} "
             f"pose=({simulation.robot.pose.x:+.3f}, {simulation.robot.pose.y:+.3f}, {simulation.robot.pose.yaw:+.3f}) "
             f"line={snapshot.line_binary} "
-            f"obstacles={list(snapshot.obstacle_binary)}"
+            f"obstacles={list(snapshot.obstacle_binary)} "
+            f"markers={[marker.marker_id for marker in snapshot.camera_visible_markers]} "
+            f"localized={localized_cell}"
         )
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .board import CrossBoard
+from .board import CrossBoard, WhiteCell
 from .config import BoardConfig, RobotConfig
 from .geometry import Pose2D
 from .obstacles import RectangleObstacle
@@ -58,4 +58,7 @@ class AlphaBotSimulation:
 
     def set_command(self, linear_m_s: float, angular_rad_s: float) -> None:
         self.robot.set_command(linear_m_s=linear_m_s, angular_rad_s=angular_rad_s)
+
+    def markers(self) -> list[WhiteCell]:
+        return self.board.markers()
 
