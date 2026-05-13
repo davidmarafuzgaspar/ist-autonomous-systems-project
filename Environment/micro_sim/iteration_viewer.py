@@ -48,6 +48,7 @@ class InteractiveValueIterationViewer:
         max_iterations: int = 1000,
         canvas_size_px: int = 700,
         sidebar_width_px: int = 320,
+        synchronous: bool = False,
     ) -> None:
         self.world = world
         self.gamma = gamma
@@ -55,8 +56,9 @@ class InteractiveValueIterationViewer:
         self.max_iterations = max_iterations
         self.canvas_size_px = canvas_size_px
         self.sidebar_width_px = sidebar_width_px
+        self.synchronous = synchronous
 
-        self.solver = ValueIteration(world, gamma=gamma, theta=theta, max_iterations=max_iterations)
+        self.solver = ValueIteration(world, gamma=gamma, theta=theta, max_iterations=max_iterations, synchronous=synchronous)
         self.values: dict[GridCell, float] = self.solver.initial_values()
         self.policy: dict[GridCell, Action | None] = self.solver.greedy_policy(self.values)
         self.iteration = 0
@@ -81,6 +83,7 @@ class InteractiveValueIterationViewer:
 
         self.param_entries: dict[str, tk.Entry] = {}
         self.param_message: tk.Label | None = None
+        self.algorithm_var = tk.StringVar(value="jacobi" if synchronous else "gauss")
 
         self._build_sidebar()
         self._draw()
@@ -120,26 +123,50 @@ class InteractiveValueIterationViewer:
 
         self._build_parameter_panel()
 
-        legend = tk.Label(
-            self.sidebar,
-            text=(
-                "\nlegend:\n"
-                "  red    = negative V\n"
-                "  white  = V ≈ 0\n"
-                "  green  = positive V\n"
-                "  arrow  = current best action"
-            ),
-            font=("Courier New", 10),
-            fg="#aaaaaa",
-            bg="#1c1c1c",
-            anchor="w",
-            justify="left",
-        )
-        legend.pack(anchor="w", pady=(16, 0))
-
     def _build_parameter_panel(self) -> None:
         separator = tk.Frame(self.sidebar, bg="#444", height=1)
         separator.pack(fill="x", pady=(14, 10))
+
+        algo_title = tk.Label(
+            self.sidebar,
+            text="Algorithm",
+            font=("Arial", 12, "bold"),
+            fg="#eeeeee",
+            bg="#1c1c1c",
+        )
+        algo_title.pack(anchor="w", pady=(0, 4))
+
+        radio_style = {
+            "bg": "#1c1c1c",
+            "fg": "#cccccc",
+            "selectcolor": "#2b2b2b",
+            "activebackground": "#1c1c1c",
+            "activeforeground": "#ffffff",
+            "font": ("Courier New", 10),
+            "anchor": "w",
+            "highlightthickness": 0,
+        }
+
+        tk.Radiobutton(
+            self.sidebar,
+            text="Gauss-Seidel (in-place)",
+            variable=self.algorithm_var,
+            value="gauss",
+            command=self._on_algorithm_change,
+            **radio_style,
+        ).pack(anchor="w")
+
+        tk.Radiobutton(
+            self.sidebar,
+            text="Jacobi (synchronous)",
+            variable=self.algorithm_var,
+            value="jacobi",
+            command=self._on_algorithm_change,
+            **radio_style,
+        ).pack(anchor="w", pady=(0, 8))
+
+        separator2 = tk.Frame(self.sidebar, bg="#444", height=1)
+        separator2.pack(fill="x", pady=(0, 10))
 
         title = tk.Label(
             self.sidebar,
@@ -219,6 +246,20 @@ class InteractiveValueIterationViewer:
             return str(int(value))
         return f"{value:g}"
 
+    def _on_algorithm_change(self) -> None:
+        self.synchronous = self.algorithm_var.get() == "jacobi"
+        self.solver = ValueIteration(
+            self.world,
+            gamma=self.gamma,
+            theta=self.theta,
+            max_iterations=self.max_iterations,
+            synchronous=self.synchronous,
+        )
+        self._on_reset()
+        if self.param_message is not None:
+            label = "Jacobi (synchronous)" if self.synchronous else "Gauss-Seidel (in-place)"
+            self.param_message.config(text=f"switched to {label}", fg="#a5d6a7")
+
     def _on_apply_parameters(self) -> None:
         try:
             new_gamma = float(self.param_entries["gamma"].get())
@@ -247,6 +288,7 @@ class InteractiveValueIterationViewer:
             gamma=self.gamma,
             theta=self.theta,
             max_iterations=self.max_iterations,
+            synchronous=self.synchronous,
         )
 
         self._on_reset()

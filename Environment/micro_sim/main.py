@@ -113,6 +113,12 @@ def main() -> None:
         action="store_true",
         help="launch the interactive Tkinter viewer with a 'Next iteration' button",
     )
+    parser.add_argument(
+        "--jacobi",
+        action="store_true",
+        help="use synchronous Jacobi updates (each iter k+1 reads only V_k); "
+             "default is Gauss-Seidel (in-place, faster but iter 1 already shows propagated values)",
+    )
 
     args = parser.parse_args()
 
@@ -131,6 +137,7 @@ def main() -> None:
             gamma=args.gamma,
             theta=args.theta,
             max_iterations=args.max_iterations,
+            synchronous=args.jacobi,
         )
         viewer.run()
         return
@@ -165,12 +172,14 @@ def main() -> None:
     )
 
     _print_header("RUNNING VALUE ITERATION")
+    print(f"mode = {'Jacobi (synchronous)' if args.jacobi else 'Gauss-Seidel (in-place)'}\n")
     solver = ValueIteration(
         world=world,
         gamma=args.gamma,
         theta=args.theta,
         max_iterations=args.max_iterations,
         verbose=args.verbose,
+        synchronous=args.jacobi,
     )
 
     on_iteration = None

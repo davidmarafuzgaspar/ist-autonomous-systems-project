@@ -72,12 +72,25 @@ class ValueIteration:
         theta: float = 1e-3,
         max_iterations: int = 1000,
         verbose: bool = False,
+        synchronous: bool = False,
     ) -> None:
+        """
+        synchronous=False (default): Gauss-Seidel. Updates are written in
+            place during the sweep, so later states in the same iteration
+            already see the new values of earlier states. Faster
+            convergence in practice.
+        synchronous=True: Jacobi. Each iteration produces a new table
+            using only the previous iteration's values, so the first
+            iteration shows pure immediate rewards (no leaked future
+            values).
+        """
+
         self.world = world
         self.gamma = gamma
         self.theta = theta
         self.max_iterations = max_iterations
         self.verbose = verbose
+        self.synchronous = synchronous
 
     def _action_value(
         self,
@@ -116,9 +129,26 @@ class ValueIteration:
     ) -> tuple[dict[GridCell, float], float]:
         """Apply one Bellman sweep over all non-terminal states.
 
-        Mutates a *copy* of ``values`` in-place (Gauss-Seidel style) and
-        returns the new table plus the largest single-state update.
+        Honors ``self.synchronous``:
+
+        - ``False`` (Gauss-Seidel): writes in place, later states in the
+          same iteration see earlier updates.
+        - ``True`` (Jacobi): builds a brand new table from a snapshot,
+          so the iteration is fully synchronous.
         """
+
+        if self.synchronous:
+            snapshot = dict(values)
+            new_values = dict(values)
+            delta = 0.0
+            for state in self.world.get_all_states():
+                if self.world.is_terminal(state):
+                    continue
+                old_value = snapshot[state]
+                new_value = self._bellman_backup(state, snapshot)
+                new_values[state] = new_value
+                delta = max(delta, abs(new_value - old_value))
+            return new_values, delta
 
         new_values = dict(values)
         delta = 0.0
@@ -163,14 +193,7 @@ class ValueIteration:
             on_iteration(0, float("inf"), dict(values))
 
         while iteration < self.max_iterations:
-            delta = 0.0
-            for state in states:
-                if self.world.is_terminal(state):
-                    continue
-                old_value = values[state]
-                new_value = self._bellman_backup(state, values)
-                values[state] = new_value
-                delta = max(delta, abs(new_value - old_value))
+            values, delta = self.step(values)
 
             iteration += 1
             if self.verbose:
