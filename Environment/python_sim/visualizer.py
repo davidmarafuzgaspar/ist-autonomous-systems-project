@@ -246,9 +246,5 @@ class SimulationViewer:
         if snapshot.localized_cell is None:
             return "localized: --"
 
-        return (
-            f"localized: cell({snapshot.localized_cell.cell_row}, "
-            f"{snapshot.localized_cell.cell_col}) "
-            f"via {snapshot.localized_cell.marker_id}"
-        )
+        return f"via marker {snapshot.localized_cell.marker_id}"
 
