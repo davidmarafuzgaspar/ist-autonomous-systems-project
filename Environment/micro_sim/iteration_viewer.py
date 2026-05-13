@@ -8,6 +8,7 @@ arrow shows the greedy action implied by the current ``V`` table.
 
 from __future__ import annotations
 
+import time
 import tkinter as tk
 
 from .value_iteration import ValueIteration
@@ -106,6 +107,9 @@ class InteractiveValueIterationViewer:
 
         self.delta_label = tk.Label(self.sidebar, font=("Courier New", 12), fg="#eeeeee", bg="#1c1c1c", anchor="w", justify="left")
         self.delta_label.pack(anchor="w", pady=(0, 4))
+
+        self.time_label = tk.Label(self.sidebar, text="time     : --", font=("Courier New", 12), fg="#90caf9", bg="#1c1c1c", anchor="w", justify="left")
+        self.time_label.pack(anchor="w", pady=(0, 4))
 
         self.status_label = tk.Label(self.sidebar, font=("Courier New", 12, "bold"), fg="#ffd54f", bg="#1c1c1c", anchor="w", justify="left")
         self.status_label.pack(anchor="w", pady=(0, 12))
@@ -335,9 +339,27 @@ class InteractiveValueIterationViewer:
         self._draw()
 
     def _on_run_to_convergence(self) -> None:
+        if self.converged:
+            return
+
+        algo_values = dict(self.values)
+        algo_iter = self.iteration
+        start = time.perf_counter()
+        while algo_iter < self.max_iterations:
+            algo_values, delta = self.solver.step(algo_values)
+            algo_iter += 1
+            if delta < self.theta:
+                break
+        algo_time_ms = (time.perf_counter() - start) * 1000.0
+        algo_iters_done = algo_iter - self.iteration
+
         while not self.converged and self.iteration < self.max_iterations:
             self._on_step()
             self.window.update_idletasks()
+
+        self.time_label.config(
+            text=f"time     : {algo_time_ms:.3f} ms  ({algo_iters_done} iters)"
+        )
 
     def _on_reset(self) -> None:
         self.values = self.solver.initial_values()
@@ -345,6 +367,7 @@ class InteractiveValueIterationViewer:
         self.iteration = 0
         self.last_delta = float("inf")
         self.converged = False
+        self.time_label.config(text="time     : --")
         self._draw()
 
     def _draw(self) -> None:
