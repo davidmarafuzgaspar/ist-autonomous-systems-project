@@ -18,6 +18,10 @@ and actions so we can compute an optimal policy.
 - `micro_sim/viewer.py`: Tkinter viewer that renders the cross board
   identically to `python_sim` and overlays the policy arrow on every
   intersection
+- `micro_sim/iteration_viewer.py`: interactive Tkinter viewer with a
+  "Next iteration" button that applies one Bellman sweep at a time and
+  paints each cell by its current `V(s)`
+- `micro_sim/analysis.py`: sensitivity sweeps over rewards / gamma
 - `micro_sim/main.py`: entry point that prints the formula, runs the
   solver, displays `V*` and `pi*`, rolls the policy from `start` to
   `goal`, and finally launches the Tkinter viewer
@@ -40,10 +44,18 @@ Show `V*(s)` next to each arrow in the viewer:
 python3 "Environment/micro_sim/main.py" --show-values
 ```
 
+Launch the interactive iteration viewer (step through with a button):
+
+```bash
+python3 "Environment/micro_sim/main.py" --interactive
+```
+
 Other useful flags:
 
 ```bash
 python3 "Environment/micro_sim/main.py" --gamma 0.9 --theta 1e-4 --verbose
+python3 "Environment/micro_sim/main.py" --trace             # print V every iteration
+python3 "Environment/micro_sim/main.py" --sweep step-cost   # sensitivity sweep
 ```
 
 The Bellman optimality equation used (deterministic transitions):

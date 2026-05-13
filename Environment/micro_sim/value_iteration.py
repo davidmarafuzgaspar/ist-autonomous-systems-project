@@ -1,5 +1,15 @@
 """Bellman value iteration on the deterministic intersection MDP.
 
+Step-by-step trace
+------------------
+
+A callback can be attached to observe every iteration. It receives the
+iteration number, the current ``delta`` and a *copy* of the current
+value function. This is what powers the ``--trace`` flag in
+``main.py``.
+
+
+
 Mathematical background
 -----------------------
 
@@ -37,8 +47,12 @@ time a non-goal cell transitions into the goal cell.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 from .world import Action, GridCell, IntersectionWorld
+
+
+IterationCallback = Callable[[int, float, dict[GridCell, float]], None]
 
 
 @dataclass
@@ -93,13 +107,60 @@ class ValueIteration:
 
         return max(self._action_value(state, action, values) for action in Action)
 
-    def solve(self) -> ValueIterationResult:
+    def initial_values(self) -> dict[GridCell, float]:
+        return {state: 0.0 for state in self.world.get_all_states()}
+
+    def step(
+        self,
+        values: dict[GridCell, float],
+    ) -> tuple[dict[GridCell, float], float]:
+        """Apply one Bellman sweep over all non-terminal states.
+
+        Mutates a *copy* of ``values`` in-place (Gauss-Seidel style) and
+        returns the new table plus the largest single-state update.
+        """
+
+        new_values = dict(values)
+        delta = 0.0
+        for state in self.world.get_all_states():
+            if self.world.is_terminal(state):
+                continue
+            old_value = new_values[state]
+            new_value = self._bellman_backup(state, new_values)
+            new_values[state] = new_value
+            delta = max(delta, abs(new_value - old_value))
+        return new_values, delta
+
+    def greedy_policy(
+        self,
+        values: dict[GridCell, float],
+    ) -> dict[GridCell, Action | None]:
+        """Extract the greedy policy from a value table."""
+
+        policy: dict[GridCell, Action | None] = {}
+        for state in self.world.get_all_states():
+            if self.world.is_terminal(state):
+                policy[state] = None
+                continue
+            policy[state] = max(
+                Action,
+                key=lambda action: self._action_value(state, action, values),
+            )
+        return policy
+
+    def solve(
+        self,
+        on_iteration: IterationCallback | None = None,
+    ) -> ValueIterationResult:
         states = self.world.get_all_states()
         values: dict[GridCell, float] = {state: 0.0 for state in states}
 
         iteration = 0
         delta = float("inf")
         converged = False
+
+        if on_iteration is not None:
+            on_iteration(0, float("inf"), dict(values))
 
         while iteration < self.max_iterations:
             delta = 0.0
@@ -114,6 +175,8 @@ class ValueIteration:
             iteration += 1
             if self.verbose:
                 print(f"  iter {iteration:4d}  delta = {delta:.6f}")
+            if on_iteration is not None:
+                on_iteration(iteration, delta, dict(values))
 
             if delta < self.theta:
                 converged = True

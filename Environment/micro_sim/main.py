@@ -9,12 +9,16 @@ import sys
 
 if __package__ in (None, ""):
     sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent))
+    from micro_sim.analysis import SWEEP_PRESETS, print_sweep_table, run_sweep
     from micro_sim.display import print_layout, print_policy, print_values
+    from micro_sim.iteration_viewer import InteractiveValueIterationViewer
     from micro_sim.value_iteration import ValueIteration
     from micro_sim.viewer import PolicyViewer
     from micro_sim.world import Action, GridCell, IntersectionWorld
 else:
+    from .analysis import SWEEP_PRESETS, print_sweep_table, run_sweep
     from .display import print_layout, print_policy, print_values
+    from .iteration_viewer import InteractiveValueIterationViewer
     from .value_iteration import ValueIteration
     from .viewer import PolicyViewer
     from .world import Action, GridCell, IntersectionWorld
@@ -65,6 +69,19 @@ def _roll_out_policy(
     print(f"did not reach goal in {max_steps} steps  total_reward={total_reward:.1f}")
 
 
+def _build_world(args: argparse.Namespace) -> IntersectionWorld:
+    world = IntersectionWorld()
+    if args.goal_reward is not None:
+        world.goal_reward = args.goal_reward
+    if args.collision_penalty is not None:
+        world.collision_penalty = args.collision_penalty
+    if args.away_penalty is not None:
+        world.away_from_goal_penalty = args.away_penalty
+    if args.step_cost is not None:
+        world.step_cost = args.step_cost
+    return world
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="MDP value iteration on the intersection grid")
     parser.add_argument("--gamma", type=float, default=0.85, help="discount factor")
@@ -74,15 +91,78 @@ def main() -> None:
     parser.add_argument("--verbose", action="store_true", help="print delta at every iteration")
     parser.add_argument("--headless", action="store_true", help="skip the Tkinter viewer")
     parser.add_argument("--show-values", action="store_true", help="overlay V*(s) next to each arrow")
+
+    parser.add_argument("--goal-reward", type=float, default=None, help="override goal reward")
+    parser.add_argument("--collision-penalty", type=float, default=None, help="override collision penalty")
+    parser.add_argument("--away-penalty", type=float, default=None, help="override 'moved away from goal' penalty")
+    parser.add_argument("--step-cost", type=float, default=None, help="override per-step cost")
+
+    parser.add_argument(
+        "--sweep",
+        choices=sorted(SWEEP_PRESETS.keys()),
+        default=None,
+        help="run a sensitivity sweep over one parameter and print a table (skips the viewer)",
+    )
+    parser.add_argument(
+        "--trace",
+        action="store_true",
+        help="print V(s) after every iteration so you can see the goal value propagating",
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="launch the interactive Tkinter viewer with a 'Next iteration' button",
+    )
+
     args = parser.parse_args()
 
-    world = IntersectionWorld()
+    if args.interactive:
+        world = _build_world(args)
+        _print_header("WORLD LAYOUT (SS=start, GG=goal, ##=obstacle)")
+        print_layout(world)
+        _print_header("MDP DEFINITION AND BELLMAN EQUATION")
+        _print_formula(args.gamma, args.theta)
+        print(
+            f"Rewards: goal={world.goal_reward}, collision={world.collision_penalty}, "
+            f"away_from_goal={world.away_from_goal_penalty}, step_cost={world.step_cost}\n"
+        )
+        viewer = InteractiveValueIterationViewer(
+            world=world,
+            gamma=args.gamma,
+            theta=args.theta,
+            max_iterations=args.max_iterations,
+        )
+        viewer.run()
+        return
+
+    if args.sweep is not None:
+        _print_header(f"SWEEP: {args.sweep}")
+        rows = run_sweep(
+            sweep_name=args.sweep,
+            base_world_factory=lambda: _build_world(args),
+            gamma=args.gamma,
+            theta=args.theta,
+            max_iterations=args.max_iterations,
+            rollout_steps=args.rollout_steps,
+        )
+        print_sweep_table(args.sweep, rows)
+        print(
+            "\ndiff_cells = number of states where pi*(s) differs from the baseline policy\n"
+            "(baseline uses the current --goal-reward/--collision-penalty/--away-penalty/--step-cost/--gamma)"
+        )
+        return
+
+    world = _build_world(args)
 
     _print_header("WORLD LAYOUT (SS=start, GG=goal, ##=obstacle)")
     print_layout(world)
 
     _print_header("MDP DEFINITION AND BELLMAN EQUATION")
     _print_formula(args.gamma, args.theta)
+    print(
+        f"Rewards: goal={world.goal_reward}, collision={world.collision_penalty}, "
+        f"away_from_goal={world.away_from_goal_penalty}, step_cost={world.step_cost}\n"
+    )
 
     _print_header("RUNNING VALUE ITERATION")
     solver = ValueIteration(
@@ -92,7 +172,17 @@ def main() -> None:
         max_iterations=args.max_iterations,
         verbose=args.verbose,
     )
-    result = solver.solve()
+
+    on_iteration = None
+    if args.trace:
+        def on_iteration(iteration: int, delta: float, snapshot: dict) -> None:
+            if iteration == 0:
+                print("  iter   0  (initial V_0 = 0 in every cell)")
+            else:
+                print(f"  iter {iteration:3d}  delta = {delta:.4f}")
+            print_values(world, snapshot)
+
+    result = solver.solve(on_iteration=on_iteration)
     status = "converged" if result.converged else "stopped (max iterations)"
     print(f"{status} after {result.iterations} iterations (final delta = {result.final_delta:.6f})")
 
