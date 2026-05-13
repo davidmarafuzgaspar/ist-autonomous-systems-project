@@ -2,10 +2,56 @@
 
 This folder contains the first simulation assets for the AlphaBot2 environment.
 
-## Current asset
+## Discrete MDP planner (`micro_sim`)
 
-- `worlds/alphabot2_cross_board_10x10.world`: square board with a 10 x 10 cross grid.
-- `python_sim/`: pure Python modular simulator without Gazebo
+`micro_sim` models the 5x5 intersection grid as a finite Markov Decision
+Process and solves it with Bellman value iteration. It is a planning
+companion to `python_sim`: same grid, same obstacles, but discrete states
+and actions so we can compute an optimal policy.
+
+- `micro_sim/world.py`: `IntersectionWorld` (states, actions, deterministic
+  transitions, reward shape, obstacle layout aligned with `python_sim`)
+- `micro_sim/value_iteration.py`: Bellman value iteration solver with
+  formula docstrings
+- `micro_sim/display.py`: terminal pretty-print for layout, values and
+  policy
+- `micro_sim/viewer.py`: Tkinter viewer that renders the cross board
+  identically to `python_sim` and overlays the policy arrow on every
+  intersection
+- `micro_sim/main.py`: entry point that prints the formula, runs the
+  solver, displays `V*` and `pi*`, rolls the policy from `start` to
+  `goal`, and finally launches the Tkinter viewer
+
+Run the demo with the Tkinter viewer:
+
+```bash
+python3 "Environment/micro_sim/main.py"
+```
+
+Skip the viewer (terminal only):
+
+```bash
+python3 "Environment/micro_sim/main.py" --headless
+```
+
+Show `V*(s)` next to each arrow in the viewer:
+
+```bash
+python3 "Environment/micro_sim/main.py" --show-values
+```
+
+Other useful flags:
+
+```bash
+python3 "Environment/micro_sim/main.py" --gamma 0.9 --theta 1e-4 --verbose
+```
+
+The Bellman optimality equation used (deterministic transitions):
+
+```
+V*(s)  = max_a [ R(s, a, s') + gamma * V*(s') ]
+pi*(s) = argmax_a [ R(s, a, s') + gamma * V*(s') ]
+```
 
 ## Pure Python simulator
 
