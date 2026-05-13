@@ -49,7 +49,7 @@ class SensorSnapshot:
 @dataclass
 class AlphaBot2Robot:
     config: RobotConfig = field(default_factory=RobotConfig)
-    pose: Pose2D = field(default_factory=lambda: Pose2D(x=-0.50, y=-0.075, yaw=0.0))
+    pose: Pose2D = field(default_factory=lambda: Pose2D(x=-0.60, y=-0.60, yaw=0.0))
     command: RobotCommand = field(default_factory=RobotCommand)
 
     def reset(self, pose: Pose2D) -> None:
@@ -134,8 +134,11 @@ class AlphaBot2Robot:
             if detection is not None:
                 visible_markers.append(detection)
 
+        if not visible_markers:
+            return []
+
         visible_markers.sort(key=lambda item: (item.distance_m, abs(item.bearing_rad), item.marker_id))
-        return visible_markers
+        return visible_markers[:1]
 
     def _marker_detection(
         self,

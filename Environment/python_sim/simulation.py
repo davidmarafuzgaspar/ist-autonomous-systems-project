@@ -40,12 +40,12 @@ class AlphaBotSimulation:
         board = CrossBoard(config=BoardConfig())
         robot = AlphaBot2Robot(
             config=RobotConfig(),
-            pose=Pose2D(x=-0.50, y=-0.075, yaw=0.0),
+            pose=Pose2D(x=-0.60, y=-0.60, yaw=0.0),
         )
         return cls(board=board, robot=robot, obstacles=default_obstacles())
 
     def reset(self) -> None:
-        self.robot.reset(Pose2D(x=-0.50, y=-0.075, yaw=0.0))
+        self.robot.reset(Pose2D(x=-0.60, y=-0.60, yaw=0.0))
         self.time_s = 0.0
 
     def step(self, dt_s: float) -> SensorSnapshot:

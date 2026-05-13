@@ -86,6 +86,10 @@ class CrossBoard:
 
         half_width = self.config.line_width_m / 2.0
         tolerance = 1e-6
+        line_extent = self.config.line_extent_m
+        if abs(x_m) > line_extent + tolerance or abs(y_m) > line_extent + tolerance:
+            return False
+
         on_vertical = any(abs(x_m - center) <= half_width + tolerance for center in self.line_centers())
         on_horizontal = any(abs(y_m - center) <= half_width + tolerance for center in self.line_centers())
         return on_vertical or on_horizontal

@@ -28,10 +28,8 @@ def run_headless(steps: int, dt_s: float) -> None:
 
         print(
             f"step={step:03d} "
-            f"pose=({simulation.robot.pose.x:+.3f}, {simulation.robot.pose.y:+.3f}, {simulation.robot.pose.yaw:+.3f}) "
             f"line={snapshot.line_binary} "
             f"obstacles={list(snapshot.obstacle_binary)} "
-            f"markers={[marker.marker_id for marker in snapshot.camera_visible_markers]} "
             f"localized={localized_cell}"
         )
 

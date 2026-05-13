@@ -85,13 +85,14 @@ class SimulationViewer:
         self.canvas.create_rectangle(x0, y0, x1, y1, fill="white", outline="#888", width=2)
 
         line_width = self._meters_to_pixels(self.simulation.board.config.line_width_m)
+        line_extent = self.simulation.board.config.line_extent_m
         for center in self.simulation.board.line_centers():
-            x0, y0 = self._world_to_canvas(center, half)
-            x1, y1 = self._world_to_canvas(center, -half)
+            x0, y0 = self._world_to_canvas(center, line_extent)
+            x1, y1 = self._world_to_canvas(center, -line_extent)
             self.canvas.create_line(x0, y0, x1, y1, fill="black", width=line_width)
 
-            x0, y0 = self._world_to_canvas(-half, center)
-            x1, y1 = self._world_to_canvas(half, center)
+            x0, y0 = self._world_to_canvas(-line_extent, center)
+            x1, y1 = self._world_to_canvas(line_extent, center)
             self.canvas.create_line(x0, y0, x1, y1, fill="black", width=line_width)
 
     def _draw_markers(self, snapshot) -> None:
@@ -218,35 +219,15 @@ class SimulationViewer:
             fill="#222",
         )
 
-        pose = self.simulation.robot.pose
         info_lines = [
-            f"time: {self.simulation.time_s:5.2f} s",
-            f"pose x: {pose.x:+.3f} m",
-            f"pose y: {pose.y:+.3f} m",
-            f"yaw: {math.degrees(pose.yaw):+.1f} deg",
-            "",
             "line sensors:",
             f"binary: {snapshot.line_binary}",
-            f"analog: {snapshot.line_analog}",
             "",
             "front obstacle sensors:",
             f"binary: {list(snapshot.obstacle_binary)}",
-            (
-                "range: "
-                f"{snapshot.obstacle_distances_m[0] if snapshot.obstacle_distances_m[0] is not None else '--'} / "
-                f"{snapshot.obstacle_distances_m[1] if snapshot.obstacle_distances_m[1] is not None else '--'} m"
-            ),
             "",
             "camera localization:",
-            f"camera yaw: {math.degrees(snapshot.camera_yaw_rad):+.1f} deg",
-            f"visible markers: {[marker.marker_id for marker in snapshot.camera_visible_markers[:6]]}",
             self._localized_cell_text(snapshot),
-            "",
-            "controls:",
-            "W/S or Up/Down  -> move",
-            "A/D or Left/Right -> turn",
-            "Space -> stop",
-            "R -> reset",
         ]
 
         y = 90
