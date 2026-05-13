@@ -10,7 +10,24 @@ from .robot import AlphaBot2Robot, SensorSnapshot
 
 
 def default_obstacles() -> list[RectangleObstacle]:
-    return []
+    obstacle_size_m = 0.08
+    intersections = [
+        ("cross_left_mid", -0.60, 0.0),
+        ("cross_top_left_inner", -0.30, 0.60),
+        ("cross_mid_right", 0.30, 0.0),
+        ("cross_bottom_mid", 0.0, -0.30),
+        ("cross_right_lower", 0.60, -0.30),
+    ]
+    return [
+        RectangleObstacle(
+            name=name,
+            center_x_m=center_x,
+            center_y_m=center_y,
+            width_m=obstacle_size_m,
+            height_m=obstacle_size_m,
+        )
+        for name, center_x, center_y in intersections
+    ]
 
 
 @dataclass

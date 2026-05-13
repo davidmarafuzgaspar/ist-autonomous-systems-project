@@ -42,14 +42,18 @@ class CrossBoard:
 
     def white_cell_centers(self) -> tuple[list[float], list[float]]:
         centers = self.line_centers()
-        x_centers = [
-            (centers[index] + centers[index + 1]) / 2.0
-            for index in range(len(centers) - 1)
-        ]
-        y_centers = [
-            (centers[index] + centers[index + 1]) / 2.0
-            for index in range(len(centers) - 2, -1, -1)
-        ]
+        line_extent = self.config.line_extent_m
+
+        x_centers: list[float] = [(-line_extent + centers[0]) / 2.0]
+        for index in range(len(centers) - 1):
+            x_centers.append((centers[index] + centers[index + 1]) / 2.0)
+        x_centers.append((centers[-1] + line_extent) / 2.0)
+
+        y_centers: list[float] = [(centers[-1] + line_extent) / 2.0]
+        for index in range(len(centers) - 2, -1, -1):
+            y_centers.append((centers[index] + centers[index + 1]) / 2.0)
+        y_centers.append((-line_extent + centers[0]) / 2.0)
+
         return x_centers, y_centers
 
     def white_cells(self) -> list[WhiteCell]:

@@ -8,19 +8,24 @@ class BoardConfig:
     spacing_m: float = 0.30
     line_width_m: float = 0.07
     outward_margin_m: float = 0.0
+    outer_extension_m: float = 0.15
     margin_m: float = 0.12
 
     @property
+    def line_extent_m(self) -> float:
+        return (
+            (self.crosses_per_axis - 1) * self.spacing_m / 2.0
+            + self.spacing_m / 2.0
+            + self.outer_extension_m
+        )
+
+    @property
     def footprint_m(self) -> float:
-        return self.crosses_per_axis * self.spacing_m + 2.0 * self.outward_margin_m
+        return 2.0 * self.line_extent_m + 2.0 * self.outward_margin_m
 
     @property
     def half_extent_m(self) -> float:
         return self.footprint_m / 2.0
-
-    @property
-    def line_extent_m(self) -> float:
-        return (self.crosses_per_axis - 1) * self.spacing_m / 2.0 + self.spacing_m / 2.0
 
 
 @dataclass(frozen=True)
