@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .world import Action, GridCell, IntersectionWorld
+from .world import Action, GridCell, IntersectionWorld, MdpAction, OrientedAction
 
 
 ARROWS: dict[Action, str] = {
@@ -40,7 +40,7 @@ def print_layout(world: IntersectionWorld) -> None:
 
 def print_policy(
     world: IntersectionWorld,
-    policy: dict[GridCell, Action | None],
+    policy: dict[GridCell, MdpAction | None],
     robot_pos: GridCell | None = None,
 ) -> None:
     """Print the policy as a grid of arrows, plus obstacles and markers."""
@@ -57,7 +57,11 @@ def print_policy(
             elif cell == world.goal:
                 cells.append(GOAL_GLYPH)
             elif cell in policy and policy[cell] is not None:
-                cells.append(f" {ARROWS[policy[cell]]}")
+                act = policy[cell]
+                if isinstance(act, OrientedAction):
+                    cells.append(f" {act.value} ")
+                else:
+                    cells.append(f" {ARROWS[act]} ")
             else:
                 cells.append(EMPTY_GLYPH)
         print(" ".join(cells))

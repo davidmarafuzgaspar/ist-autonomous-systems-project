@@ -12,7 +12,16 @@ import time
 import tkinter as tk
 
 from .value_iteration import ValueIteration
-from .world import Action, GridCell, IntersectionWorld
+from .world import (
+    Action,
+    GridCell,
+    Heading,
+    IntersectionWorld,
+    MdpAction,
+    MdpState,
+    OrientedAction,
+    PoseState,
+)
 
 
 LINE_WIDTH_M = 0.07
@@ -39,6 +48,13 @@ _ACTION_UNIT_VEC: dict[Action, tuple[float, float]] = {
     Action.RIGHT: (1.0, 0.0),
 }
 
+_HEADING_UNIT_VEC: dict[Heading, tuple[float, float]] = {
+    Heading.N: (0.0, 1.0),
+    Heading.E: (1.0, 0.0),
+    Heading.S: (0.0, -1.0),
+    Heading.W: (-1.0, 0.0),
+}
+
 
 class InteractiveValueIterationViewer:
     def __init__(
@@ -60,8 +76,8 @@ class InteractiveValueIterationViewer:
         self.synchronous = synchronous
 
         self.solver = ValueIteration(world, gamma=gamma, theta=theta, max_iterations=max_iterations, synchronous=synchronous)
-        self.values: dict[GridCell, float] = self.solver.initial_values()
-        self.policy: dict[GridCell, Action | None] = self.solver.greedy_policy(self.values)
+        self.values: dict[MdpState, float] = self.solver.initial_values()
+        self.policy: dict[MdpState, MdpAction | None] = self.solver.greedy_policy(self.values)
         self.iteration = 0
         self.last_delta: float = float("inf")
         self.converged = False
@@ -190,6 +206,7 @@ class InteractiveValueIterationViewer:
             ("collision_penalty", "collision", self.world.collision_penalty),
             ("away_from_goal_penalty", "away penalty", self.world.away_from_goal_penalty),
             ("step_cost", "step cost", self.world.step_cost),
+            ("turn_90_reward", "turn 90°", self.world.turn_90_reward),
         ]
 
         for row, (key, label, value) in enumerate(param_specs):
@@ -250,6 +267,20 @@ class InteractiveValueIterationViewer:
             return str(int(value))
         return f"{value:g}"
 
+    def _cell_value_map(self) -> dict[GridCell, float]:
+        if self.world.oriented_mdp:
+            return self.world.aggregate_max_v_per_cell(self.values)
+        return self.values  # type: ignore[return-value]
+
+    def _cell_policy_and_heading(
+        self,
+    ) -> tuple[dict[GridCell, MdpAction | None], dict[GridCell, Heading]]:
+        if self.world.oriented_mdp:
+            h = self.world.representative_heading_per_cell(self.values)
+            p = self.world.representative_policy_per_cell(self.values, self.policy)
+            return p, h
+        return self.policy, {}  # type: ignore[return-value]
+
     def _on_algorithm_change(self) -> None:
         self.synchronous = self.algorithm_var.get() == "jacobi"
         self.solver = ValueIteration(
@@ -271,6 +302,7 @@ class InteractiveValueIterationViewer:
             new_collision = float(self.param_entries["collision_penalty"].get())
             new_away = float(self.param_entries["away_from_goal_penalty"].get())
             new_step = float(self.param_entries["step_cost"].get())
+            new_t90 = float(self.param_entries["turn_90_reward"].get())
         except ValueError as exc:
             if self.param_message is not None:
                 self.param_message.config(text=f"invalid number: {exc}", fg="#ef9a9a")
@@ -285,6 +317,7 @@ class InteractiveValueIterationViewer:
         self.world.collision_penalty = new_collision
         self.world.away_from_goal_penalty = new_away
         self.world.step_cost = new_step
+        self.world.turn_90_reward = new_t90
 
         self.gamma = new_gamma
         self.solver = ValueIteration(
@@ -301,7 +334,8 @@ class InteractiveValueIterationViewer:
             self.param_message.config(
                 text=(
                     f"applied. gamma={new_gamma}, goal={new_goal}, "
-                    f"coll={new_collision}, away={new_away}, step={new_step}"
+                    f"coll={new_collision}, away={new_away}, step={new_step}, "
+                    f"t90={new_t90}"
                 ),
                 fg="#a5d6a7",
             )
@@ -409,7 +443,8 @@ class InteractiveValueIterationViewer:
 
     def _draw_value_overlays(self) -> None:
         box_half_m = self.world.spacing_m * 0.42
-        for cell, value in self.values.items():
+        cell_vals = self._cell_value_map()
+        for cell, value in cell_vals.items():
             if self.world.is_obstacle(cell):
                 continue
             x_m, y_m = self.world.world_xy(cell)
@@ -473,15 +508,26 @@ class InteractiveValueIterationViewer:
         head_long = max(8.0, self._meters_to_pixels(0.020))
         head_short = max(10.0, self._meters_to_pixels(0.024))
         head_wide = max(5.0, self._meters_to_pixels(0.014))
+        arrow_offset_m = self.world.spacing_m * 0.12
 
-        for cell, action in self.policy.items():
+        pol, head_map = self._cell_policy_and_heading()
+        for cell, action in pol.items():
             if action is None:
                 continue
             if cell == self.world.goal:
                 continue
             x_m, y_m = self.world.world_xy(cell)
-            unit_x, unit_y = _ACTION_UNIT_VEC[action]
-            arrow_offset_m = self.world.spacing_m * 0.12
+            if isinstance(action, OrientedAction):
+                if action == OrientedAction.FORWARD:
+                    heading = head_map.get(cell, Heading.N)
+                    unit_x, unit_y = _HEADING_UNIT_VEC[heading]
+                else:
+                    cx, cy = self._world_to_canvas(x_m, y_m)
+                    color = "#64b5f6"
+                    self.canvas.create_text(cx, cy, text=action.value, fill=color, font=("Arial", 14, "bold"))
+                    continue
+            else:
+                unit_x, unit_y = _ACTION_UNIT_VEC[action]
             start_px = self._world_to_canvas(
                 x_m - unit_x * arrow_length_m / 2.0,
                 y_m - unit_y * arrow_length_m / 2.0 - arrow_offset_m,
@@ -512,6 +558,18 @@ class InteractiveValueIterationViewer:
             width=4,
         )
         self.canvas.create_text(sx, sy + radius_px + 12, text="S", fill=START_OUTLINE, font=("Arial", 11, "bold"))
+
+        if self.world.oriented_mdp:
+            ux, uy = _HEADING_UNIT_VEC[self.world.start_heading]
+            tick = self._meters_to_pixels(self.world.spacing_m * 0.22)
+            self.canvas.create_line(
+                sx, sy,
+                sx + ux * tick,
+                sy - uy * tick,
+                fill=START_OUTLINE,
+                width=4,
+                capstyle=tk.ROUND,
+            )
 
         goal_x_m, goal_y_m = self.world.world_xy(self.world.goal)
         gx, gy = self._world_to_canvas(goal_x_m, goal_y_m)

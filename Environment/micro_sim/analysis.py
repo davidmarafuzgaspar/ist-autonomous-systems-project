@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from .value_iteration import ValueIteration
-from .world import Action, GridCell, IntersectionWorld
+from .world import Action, GridCell, IntersectionWorld, MdpAction, MdpState
 
 
 @dataclass
@@ -89,30 +89,41 @@ class SweepRow:
 
 def _rollout_summary(
     world: IntersectionWorld,
-    policy: dict[GridCell, Action | None],
+    policy: dict[MdpState, MdpAction | None],
     max_steps: int,
 ) -> tuple[int, float, bool]:
-    state = world.start
+    state = world.initial_mdp_state()
     total_reward = 0.0
     for step in range(1, max_steps + 1):
+        if world.is_terminal(state):
+            return step - 1, total_reward, True
         action = policy.get(state)
         if action is None:
             return step - 1, total_reward, True
-        next_state, hit_wall = world.next_state(state, action)
-        total_reward += world.reward(state, next_state, hit_wall)
+        next_state, hit_wall = world.transition(state, action)
+        total_reward += world.reward_transition(state, action, next_state, hit_wall)
         state = next_state
         if world.is_terminal(state):
             return step, total_reward, True
     return max_steps, total_reward, False
 
 
-def _policy_diff(
-    a: dict[GridCell, Action | None],
-    b: dict[GridCell, Action | None],
+def _policy_diff_cells(
+    world: IntersectionWorld,
+    a: dict[MdpState, MdpAction | None],
+    b: dict[MdpState, MdpAction | None],
+    values_a: dict[MdpState, float],
+    values_b: dict[MdpState, float],
 ) -> int:
+    if world.oriented_mdp:
+        pa = world.representative_policy_per_cell(values_a, a)
+        pb = world.representative_policy_per_cell(values_b, b)
+    else:
+        pa = a  # type: ignore[assignment]
+        pb = b  # type: ignore[assignment]
     diff = 0
-    for cell in a:
-        if cell in b and a[cell] != b[cell]:
+    for cell in pa:
+        if cell in pb and pa[cell] != pb[cell]:
             diff += 1
     return diff
 
@@ -160,13 +171,13 @@ def run_sweep(
         result = solver.solve()
 
         steps, total_reward, reached = _rollout_summary(world, result.policy, rollout_steps)
-        diff = _policy_diff(baseline_policy, result.policy)
+        diff = _policy_diff_cells(world, baseline_policy, result.policy, baseline_result.values, result.values)
         rows.append(
             SweepRow(
                 value=value,
                 iterations=result.iterations,
                 converged=result.converged,
-                v_start=result.values.get(world.start, 0.0),
+                v_start=result.values.get(world.initial_mdp_state(), 0.0),
                 rollout_steps=steps,
                 rollout_reward=total_reward,
                 reached_goal=reached,

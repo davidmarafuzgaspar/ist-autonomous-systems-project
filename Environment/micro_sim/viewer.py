@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import tkinter as tk
 
-from .world import Action, GridCell, IntersectionWorld
+from .world import Action, GridCell, Heading, IntersectionWorld, MdpAction, OrientedAction
 
 
 LINE_WIDTH_M = 0.07
@@ -34,22 +34,31 @@ _ACTION_UNIT_VEC: dict[Action, tuple[float, float]] = {
     Action.RIGHT: (1.0, 0.0),
 }
 
+_HEADING_UNIT_VEC: dict[Heading, tuple[float, float]] = {
+    Heading.N: (0.0, 1.0),
+    Heading.E: (1.0, 0.0),
+    Heading.S: (0.0, -1.0),
+    Heading.W: (-1.0, 0.0),
+}
+
 
 class PolicyViewer:
     def __init__(
         self,
         world: IntersectionWorld,
-        policy: dict[GridCell, Action | None],
+        policy: dict[GridCell, MdpAction | None],
         values: dict[GridCell, float] | None = None,
         canvas_size_px: int = 800,
         title: str = "Micro Sim - Optimal Policy",
         show_values: bool = False,
+        representative_heading: dict[GridCell, Heading] | None = None,
     ) -> None:
         self.world = world
         self.policy = policy
         self.values = values or {}
         self.canvas_size_px = canvas_size_px
         self.show_values = show_values
+        self.representative_heading = representative_heading or {}
 
         self.window = tk.Tk()
         self.window.title(title)
@@ -137,7 +146,27 @@ class PolicyViewer:
             if cell == self.world.goal:
                 continue
             x_m, y_m = self.world.world_xy(cell)
-            unit_x, unit_y = _ACTION_UNIT_VEC[action]
+            if isinstance(action, OrientedAction):
+                if action == OrientedAction.FORWARD:
+                    heading = self.representative_heading.get(cell, Heading.N)
+                    unit_x, unit_y = _HEADING_UNIT_VEC[heading]
+                else:
+                    cx, cy = self._world_to_canvas(x_m, y_m)
+                    color = "#1976d2"
+                    self.canvas.create_text(cx, cy, text=action.value, fill=color, font=("Arial", 16, "bold"))
+                    if self.show_values and cell in self.values:
+                        label_offset_px = self._meters_to_pixels(self.world.spacing_m * 0.18)
+                        center_px = self._world_to_canvas(x_m, y_m)
+                        self.canvas.create_text(
+                            center_px[0] + label_offset_px,
+                            center_px[1] - label_offset_px,
+                            text=f"{self.values[cell]:.0f}",
+                            fill=ARROW_COLOR,
+                            font=("Courier New", 9, "bold"),
+                        )
+                    continue
+            else:
+                unit_x, unit_y = _ACTION_UNIT_VEC[action]
             start_px = self._world_to_canvas(
                 x_m - unit_x * arrow_length_m / 2.0,
                 y_m - unit_y * arrow_length_m / 2.0,

@@ -14,14 +14,14 @@ if __package__ in (None, ""):
     from micro_sim.iteration_viewer import InteractiveValueIterationViewer
     from micro_sim.value_iteration import ValueIteration
     from micro_sim.viewer import PolicyViewer
-    from micro_sim.world import Action, GridCell, IntersectionWorld
+    from micro_sim.world import Action, GridCell, IntersectionWorld, MdpAction, MdpState, PoseState
 else:
     from .analysis import SWEEP_PRESETS, print_sweep_table, run_sweep
     from .display import print_layout, print_policy, print_values
     from .iteration_viewer import InteractiveValueIterationViewer
     from .value_iteration import ValueIteration
     from .viewer import PolicyViewer
-    from .world import Action, GridCell, IntersectionWorld
+    from .world import Action, GridCell, IntersectionWorld, MdpAction, MdpState, PoseState
 
 
 def _print_header(title: str) -> None:
@@ -41,27 +41,45 @@ def _print_formula(gamma: float, theta: float) -> None:
 
 def _roll_out_policy(
     world: IntersectionWorld,
-    policy: dict[GridCell, Action | None],
+    policy: dict[MdpState, MdpAction | None],
     max_steps: int,
 ) -> None:
-    state = world.start
+    state = world.initial_mdp_state()
     total_reward = 0.0
     for step in range(1, max_steps + 1):
+        if world.is_terminal(state):
+            print(f"step {step:02d}  already at goal  total_reward={total_reward:.1f}")
+            return
         action = policy.get(state)
         if action is None:
             print(f"step {step:02d}  state={state}  policy=GOAL  total_reward={total_reward:.1f}")
             return
-        next_state, hit_wall = world.next_state(state, action)
-        reward = world.reward(state, next_state, hit_wall)
+        next_state, hit_wall = world.transition(state, action)
+        reward = world.reward_transition(state, action, next_state, hit_wall)
         total_reward += reward
-        print(
-            f"step {step:02d}  state=({state.row},{state.col})"
-            f"  action={action.value:<5s}"
-            f"  next=({next_state.row},{next_state.col})"
-            f"  hit_wall={hit_wall}"
-            f"  reward={reward:>8.1f}"
-            f"  total={total_reward:>9.1f}"
-        )
+        if world.oriented_mdp:
+            assert isinstance(state, PoseState)
+            assert isinstance(next_state, PoseState)
+            print(
+                f"step {step:02d}  cell=({state.cell.row},{state.cell.col})"
+                f"  h={state.heading.name}"
+                f"  action={action.value}"
+                f"  next_cell=({next_state.cell.row},{next_state.cell.col})"
+                f"  next_h={next_state.heading.name}"
+                f"  hit_wall={hit_wall}"
+                f"  reward={reward:>8.1f}"
+                f"  total={total_reward:>9.1f}"
+            )
+        else:
+            assert isinstance(state, GridCell) and isinstance(next_state, GridCell)
+            print(
+                f"step {step:02d}  state=({state.row},{state.col})"
+                f"  action={action.value:<5s}"
+                f"  next=({next_state.row},{next_state.col})"
+                f"  hit_wall={hit_wall}"
+                f"  reward={reward:>8.1f}"
+                f"  total={total_reward:>9.1f}"
+            )
         state = next_state
         if world.is_terminal(state):
             print(f"reached goal at step {step}  total_reward={total_reward:.1f}")
@@ -71,6 +89,8 @@ def _roll_out_policy(
 
 def _build_world(args: argparse.Namespace) -> IntersectionWorld:
     world = IntersectionWorld()
+    if getattr(args, "oriented", False):
+        world.oriented_mdp = True
     if args.goal_reward is not None:
         world.goal_reward = args.goal_reward
     if args.collision_penalty is not None:
@@ -114,16 +134,22 @@ def main() -> None:
         help="launch the interactive Tkinter viewer with a 'Next iteration' button",
     )
     parser.add_argument(
+        "--oriented",
+        action="store_true",
+        help="use oriented MDP (cell + heading); actions are F/L/R (set turn 90° reward to 0 to disable)",
+    )
+    parser.add_argument(
         "--jacobi",
         action="store_true",
         help="use synchronous Jacobi updates (each iter k+1 reads only V_k); "
-             "default is Gauss-Seidel (in-place, faster but iter 1 already shows propagated values)",
+        "default is Gauss-Seidel (in-place, faster but iter 1 already shows propagated values)",
     )
 
     args = parser.parse_args()
 
     if args.interactive:
         world = _build_world(args)
+        world.oriented_mdp = True
         _print_header("WORLD LAYOUT (SS=start, GG=goal, ##=obstacle)")
         print_layout(world)
         _print_header("MDP DEFINITION AND BELLMAN EQUATION")
@@ -131,6 +157,8 @@ def main() -> None:
         print(
             f"Rewards: goal={world.goal_reward}, collision={world.collision_penalty}, "
             f"away_from_goal={world.away_from_goal_penalty}, step_cost={world.step_cost}\n"
+            f"Oriented MDP: start={world.start} heading={world.start_heading.name}, "
+            f"turn_90={world.turn_90_reward}\n"
         )
         viewer = InteractiveValueIterationViewer(
             world=world,
@@ -169,6 +197,12 @@ def main() -> None:
     print(
         f"Rewards: goal={world.goal_reward}, collision={world.collision_penalty}, "
         f"away_from_goal={world.away_from_goal_penalty}, step_cost={world.step_cost}\n"
+        + (
+            f"Oriented MDP: start_heading={world.start_heading.name}, "
+            f"turn_90={world.turn_90_reward}\n"
+            if world.oriented_mdp
+            else ""
+        )
     )
 
     _print_header("RUNNING VALUE ITERATION")
@@ -189,17 +223,23 @@ def main() -> None:
                 print("  iter   0  (initial V_0 = 0 in every cell)")
             else:
                 print(f"  iter {iteration:3d}  delta = {delta:.4f}")
-            print_values(world, snapshot)
+            table = world.aggregate_max_v_per_cell(snapshot) if world.oriented_mdp else snapshot
+            print_values(world, table)
 
     result = solver.solve(on_iteration=on_iteration)
     status = "converged" if result.converged else "stopped (max iterations)"
     print(f"{status} after {result.iterations} iterations (final delta = {result.final_delta:.6f})")
 
     _print_header("OPTIMAL VALUES V*(s)")
-    print_values(world, result.values)
+    v_table = world.aggregate_max_v_per_cell(result.values) if world.oriented_mdp else result.values
+    print_values(world, v_table)
 
     _print_header("OPTIMAL POLICY pi*(s)")
-    print_policy(world, result.policy)
+    if world.oriented_mdp:
+        pol_table = world.representative_policy_per_cell(result.values, result.policy)
+        print_policy(world, pol_table)
+    else:
+        print_policy(world, result.policy)  # type: ignore[arg-type]
 
     _print_header("ROLLOUT FROM START FOLLOWING pi*")
     _roll_out_policy(world, result.policy, args.rollout_steps)
@@ -209,9 +249,14 @@ def main() -> None:
 
     viewer = PolicyViewer(
         world=world,
-        policy=result.policy,
-        values=result.values,
+        policy=world.representative_policy_per_cell(result.values, result.policy)
+        if world.oriented_mdp
+        else result.policy,  # type: ignore[arg-type]
+        values=v_table,
         show_values=args.show_values,
+        representative_heading=world.representative_heading_per_cell(result.values)
+        if world.oriented_mdp
+        else None,
     )
     viewer.run()
 
