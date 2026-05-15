@@ -1,16 +1,8 @@
-"""Terminal rendering helpers for the intersection MDP."""
+"""Terminal output for layout, values and aggregated policy."""
 
 from __future__ import annotations
 
-from .world import Action, GridCell, Heading, IntersectionWorld, MdpAction, OrientedAction
-
-
-ARROWS: dict[Action, str] = {
-    Action.UP: "^",
-    Action.DOWN: "v",
-    Action.LEFT: "<",
-    Action.RIGHT: ">",
-}
+from .world import GridCell, Heading, IntersectionWorld, OrientedAction
 
 OBSTACLE_GLYPH = "##"
 GOAL_GLYPH = "GG"
@@ -25,21 +17,17 @@ HEADING_ARROWS: dict[Heading, str] = {
 }
 
 
-def oriented_policy_glyph(action: OrientedAction, cell_heading: Heading) -> str:
-    """Terminal glyph: forward = cardinal motion arrow; turns = in-place rotation symbols."""
-
+def oriented_policy_glyph(action: OrientedAction, draw_heading: Heading) -> str:
     if action == OrientedAction.FORWARD:
-        return HEADING_ARROWS[cell_heading]
+        return HEADING_ARROWS[draw_heading]
     if action == OrientedAction.TURN_LEFT:
-        return "\u21ba"  # ↺
+        return "\u21ba"
     if action == OrientedAction.TURN_RIGHT:
-        return "\u21bb"  # ↻
+        return "\u21bb"
     return action.value
 
 
 def print_layout(world: IntersectionWorld) -> None:
-    """Print the static layout: start, goal, obstacles, free cells."""
-
     print(_separator(world))
     for row in range(world.rows):
         cells: list[str] = []
@@ -59,49 +47,30 @@ def print_layout(world: IntersectionWorld) -> None:
 
 def print_policy(
     world: IntersectionWorld,
-    policy: dict[GridCell, MdpAction | None],
-    robot_pos: GridCell | None = None,
-    oriented_glyph_heading: dict[GridCell, Heading] | None = None,
+    policy: dict[GridCell, OrientedAction | None],
+    draw_heading: dict[GridCell, Heading] | None = None,
 ) -> None:
-    """Print the policy as a grid of arrows, plus obstacles and markers.
-
-    For oriented MDP, pass ``oriented_glyph_heading`` (internal draw heading per cell: argmax_h
-    Q for the **aggregated** action shown; not a claim about true path heading). ``F`` uses
-    ^/></v; ``L``/``R`` use ↺/↻. No heading letters are printed.
-    """
-
     print(_separator(world))
     for row in range(world.rows):
         cells: list[str] = []
         for col in range(world.cols):
             cell = GridCell(row, col)
-            if robot_pos is not None and cell == robot_pos:
-                cells.append("RR")
-            elif world.is_obstacle(cell):
+            if world.is_obstacle(cell):
                 cells.append(OBSTACLE_GLYPH)
             elif cell == world.goal:
                 cells.append(GOAL_GLYPH)
             elif cell in policy and policy[cell] is not None:
                 act = policy[cell]
-                if isinstance(act, OrientedAction):
-                    h = (oriented_glyph_heading or {}).get(cell, Heading.N)
-                    glyph = oriented_policy_glyph(act, h)
-                    cells.append(f" {glyph} ")
-                else:
-                    cells.append(f" {ARROWS[act]} ")
+                assert act is not None
+                h = (draw_heading or {}).get(cell, Heading.N)
+                cells.append(f" {oriented_policy_glyph(act, h)} ")
             else:
                 cells.append(EMPTY_GLYPH)
         print(" ".join(cells))
     print(_separator(world))
 
 
-def print_values(
-    world: IntersectionWorld,
-    values: dict[GridCell, float],
-    width: int = 8,
-) -> None:
-    """Print V(s) as a numeric grid, with obstacles shown as ``####``."""
-
+def print_values(world: IntersectionWorld, values: dict[GridCell, float], width: int = 8) -> None:
     print(_separator(world, cell_width=width + 1))
     for row in range(world.rows):
         cells: list[str] = []
