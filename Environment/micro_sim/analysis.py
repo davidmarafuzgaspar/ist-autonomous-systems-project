@@ -110,14 +110,14 @@ def _rollout_summary(
 
 def _policy_diff_cells(
     world: IntersectionWorld,
-    a: dict[MdpState, MdpAction | None],
-    b: dict[MdpState, MdpAction | None],
+    gamma_a: float,
     values_a: dict[MdpState, float],
+    gamma_b: float,
     values_b: dict[MdpState, float],
 ) -> int:
     if world.oriented_mdp:
-        pa = world.representative_policy_per_cell(values_a, a)
-        pb = world.representative_policy_per_cell(values_b, b)
+        pa = world.aggregated_policy_per_cell(values_a, gamma_a)
+        pb = world.aggregated_policy_per_cell(values_b, gamma_b)
     else:
         pa = a  # type: ignore[assignment]
         pb = b  # type: ignore[assignment]
@@ -151,7 +151,6 @@ def run_sweep(
         max_iterations=max_iterations,
     )
     baseline_result = baseline_solver.solve()
-    baseline_policy = baseline_result.policy
 
     rows: list[SweepRow] = []
     for value in preset.values:
@@ -171,7 +170,13 @@ def run_sweep(
         result = solver.solve()
 
         steps, total_reward, reached = _rollout_summary(world, result.policy, rollout_steps)
-        diff = _policy_diff_cells(world, baseline_policy, result.policy, baseline_result.values, result.values)
+        diff = _policy_diff_cells(
+            world,
+            gamma,
+            baseline_result.values,
+            current_gamma,
+            result.values,
+        )
         rows.append(
             SweepRow(
                 value=value,

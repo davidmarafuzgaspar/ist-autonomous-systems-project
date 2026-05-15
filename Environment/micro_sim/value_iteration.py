@@ -47,9 +47,7 @@ class ValueIteration:
         action: MdpAction,
         values: dict[MdpState, float],
     ) -> float:
-        next_state, hit_wall = self.world.transition(state, action)
-        reward = self.world.reward_transition(state, action, next_state, hit_wall)
-        return reward + self.gamma * values.get(next_state, 0.0)
+        return self.world.bellman_action_value(state, action, values, self.gamma)
 
     def _bellman_backup(
         self,

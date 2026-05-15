@@ -7,6 +7,7 @@ state. Obstacles, start and goal are highlighted.
 
 from __future__ import annotations
 
+import math
 import tkinter as tk
 
 from .world import Action, GridCell, Heading, IntersectionWorld, MdpAction, OrientedAction
@@ -42,6 +43,29 @@ _HEADING_UNIT_VEC: dict[Heading, tuple[float, float]] = {
 }
 
 
+def _oriented_turn_arc_world_xy(
+    x_m: float,
+    y_m: float,
+    heading: Heading,
+    turn_left: bool,
+    radius_m: float,
+    segments: int = 14,
+) -> list[tuple[float, float]]:
+    u0x, u0y = _HEADING_UNIT_VEC[heading]
+    h1 = heading.turn_left() if turn_left else heading.turn_right()
+    u1x, u1y = _HEADING_UNIT_VEC[h1]
+    pts: list[tuple[float, float]] = []
+    for i in range(segments + 1):
+        t = (i / segments) * (math.pi / 2)
+        pts.append(
+            (
+                x_m + radius_m * (math.cos(t) * u0x + math.sin(t) * u1x),
+                y_m + radius_m * (math.cos(t) * u0y + math.sin(t) * u1y),
+            )
+        )
+    return pts
+
+
 class PolicyViewer:
     def __init__(
         self,
@@ -51,14 +75,14 @@ class PolicyViewer:
         canvas_size_px: int = 800,
         title: str = "Micro Sim - Optimal Policy",
         show_values: bool = False,
-        representative_heading: dict[GridCell, Heading] | None = None,
+        oriented_glyph_heading: dict[GridCell, Heading] | None = None,
     ) -> None:
         self.world = world
         self.policy = policy
         self.values = values or {}
         self.canvas_size_px = canvas_size_px
         self.show_values = show_values
-        self.representative_heading = representative_heading or {}
+        self.oriented_glyph_heading = oriented_glyph_heading or {}
 
         self.window = tk.Tk()
         self.window.title(title)
@@ -97,6 +121,14 @@ class PolicyViewer:
         self._draw_obstacles()
         self._draw_start_and_goal()
         self._draw_policy_arrows()
+        if self.world.oriented_mdp:
+            self.canvas.create_text(
+                self.canvas_size_px // 2,
+                self.canvas_size_px - 14,
+                text="Orientado: por célula, ação = argmax_a max_h Q; no start só h inicial. Seta = F; arco = L/R (desenho usa argmax_h Q para essa ação, sem letra de heading).",
+                fill="#555555",
+                font=("Arial", 9),
+            )
 
     def _draw_board(self) -> None:
         half = self._half_extent_m
@@ -146,43 +178,62 @@ class PolicyViewer:
             if cell == self.world.goal:
                 continue
             x_m, y_m = self.world.world_xy(cell)
+
             if isinstance(action, OrientedAction):
+                heading = self.oriented_glyph_heading.get(cell, Heading.N)
                 if action == OrientedAction.FORWARD:
-                    heading = self.representative_heading.get(cell, Heading.N)
                     unit_x, unit_y = _HEADING_UNIT_VEC[heading]
+                    start_px = self._world_to_canvas(
+                        x_m - unit_x * arrow_length_m / 2.0,
+                        y_m - unit_y * arrow_length_m / 2.0,
+                    )
+                    end_px = self._world_to_canvas(
+                        x_m + unit_x * arrow_length_m / 2.0,
+                        y_m + unit_y * arrow_length_m / 2.0,
+                    )
+                    self.canvas.create_line(
+                        start_px[0], start_px[1], end_px[0], end_px[1],
+                        fill=ARROW_COLOR,
+                        width=arrow_width_px,
+                        arrow=tk.LAST,
+                        arrowshape=(head_long, head_short, head_wide),
+                        capstyle=tk.ROUND,
+                    )
                 else:
-                    cx, cy = self._world_to_canvas(x_m, y_m)
-                    color = "#1976d2"
-                    self.canvas.create_text(cx, cy, text=action.value, fill=color, font=("Arial", 16, "bold"))
-                    if self.show_values and cell in self.values:
-                        label_offset_px = self._meters_to_pixels(self.world.spacing_m * 0.18)
-                        center_px = self._world_to_canvas(x_m, y_m)
-                        self.canvas.create_text(
-                            center_px[0] + label_offset_px,
-                            center_px[1] - label_offset_px,
-                            text=f"{self.values[cell]:.0f}",
-                            fill=ARROW_COLOR,
-                            font=("Courier New", 9, "bold"),
-                        )
-                    continue
+                    turn_left = action == OrientedAction.TURN_LEFT
+                    arc_xy = _oriented_turn_arc_world_xy(
+                        x_m, y_m, heading, turn_left, self.world.spacing_m * 0.16,
+                    )
+                    flat: list[float] = []
+                    for wx, wy in arc_xy:
+                        px, py = self._world_to_canvas(wx, wy)
+                        flat.extend([px, py])
+                    self.canvas.create_line(
+                        *flat,
+                        fill=ARROW_COLOR,
+                        width=arrow_width_px,
+                        smooth=True,
+                        arrow=tk.LAST,
+                        arrowshape=(head_long, head_short, head_wide),
+                    )
             else:
                 unit_x, unit_y = _ACTION_UNIT_VEC[action]
-            start_px = self._world_to_canvas(
-                x_m - unit_x * arrow_length_m / 2.0,
-                y_m - unit_y * arrow_length_m / 2.0,
-            )
-            end_px = self._world_to_canvas(
-                x_m + unit_x * arrow_length_m / 2.0,
-                y_m + unit_y * arrow_length_m / 2.0,
-            )
-            self.canvas.create_line(
-                start_px[0], start_px[1], end_px[0], end_px[1],
-                fill=ARROW_COLOR,
-                width=arrow_width_px,
-                arrow=tk.LAST,
-                arrowshape=(head_long, head_short, head_wide),
-                capstyle=tk.ROUND,
-            )
+                start_px = self._world_to_canvas(
+                    x_m - unit_x * arrow_length_m / 2.0,
+                    y_m - unit_y * arrow_length_m / 2.0,
+                )
+                end_px = self._world_to_canvas(
+                    x_m + unit_x * arrow_length_m / 2.0,
+                    y_m + unit_y * arrow_length_m / 2.0,
+                )
+                self.canvas.create_line(
+                    start_px[0], start_px[1], end_px[0], end_px[1],
+                    fill=ARROW_COLOR,
+                    width=arrow_width_px,
+                    arrow=tk.LAST,
+                    arrowshape=(head_long, head_short, head_wide),
+                    capstyle=tk.ROUND,
+                )
 
             if self.show_values and cell in self.values:
                 label_offset_px = self._meters_to_pixels(self.world.spacing_m * 0.18)

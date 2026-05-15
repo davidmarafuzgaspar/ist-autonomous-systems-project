@@ -10,18 +10,18 @@ import sys
 if __package__ in (None, ""):
     sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent))
     from micro_sim.analysis import SWEEP_PRESETS, print_sweep_table, run_sweep
-    from micro_sim.display import print_layout, print_policy, print_values
+    from micro_sim.display import oriented_policy_glyph, print_layout, print_policy, print_values
     from micro_sim.iteration_viewer import InteractiveValueIterationViewer
     from micro_sim.value_iteration import ValueIteration
     from micro_sim.viewer import PolicyViewer
-    from micro_sim.world import Action, GridCell, IntersectionWorld, MdpAction, MdpState, PoseState
+    from micro_sim.world import Action, GridCell, IntersectionWorld, MdpAction, MdpState, OrientedAction, PoseState
 else:
     from .analysis import SWEEP_PRESETS, print_sweep_table, run_sweep
-    from .display import print_layout, print_policy, print_values
+    from .display import oriented_policy_glyph, print_layout, print_policy, print_values
     from .iteration_viewer import InteractiveValueIterationViewer
     from .value_iteration import ValueIteration
     from .viewer import PolicyViewer
-    from .world import Action, GridCell, IntersectionWorld, MdpAction, MdpState, PoseState
+    from .world import Action, GridCell, IntersectionWorld, MdpAction, MdpState, OrientedAction, PoseState
 
 
 def _print_header(title: str) -> None:
@@ -60,10 +60,12 @@ def _roll_out_policy(
         if world.oriented_mdp:
             assert isinstance(state, PoseState)
             assert isinstance(next_state, PoseState)
+            assert isinstance(action, OrientedAction)
+            act_sym = oriented_policy_glyph(action, state.heading)
             print(
                 f"step {step:02d}  cell=({state.cell.row},{state.cell.col})"
                 f"  h={state.heading.name}"
-                f"  action={action.value}"
+                f"  action={act_sym}"
                 f"  next_cell=({next_state.cell.row},{next_state.cell.col})"
                 f"  next_h={next_state.heading.name}"
                 f"  hit_wall={hit_wall}"
@@ -236,8 +238,9 @@ def main() -> None:
 
     _print_header("OPTIMAL POLICY pi*(s)")
     if world.oriented_mdp:
-        pol_table = world.representative_policy_per_cell(result.values, result.policy)
-        print_policy(world, pol_table)
+        pol_table = world.aggregated_policy_per_cell(result.values, args.gamma)
+        glyph_h = world.display_heading_map_for_cell_policy(pol_table, result.values, args.gamma)
+        print_policy(world, pol_table, oriented_glyph_heading=glyph_h)
     else:
         print_policy(world, result.policy)  # type: ignore[arg-type]
 
@@ -247,16 +250,22 @@ def main() -> None:
     if args.headless:
         return
 
+    pol_view = (
+        world.aggregated_policy_per_cell(result.values, args.gamma)
+        if world.oriented_mdp
+        else result.policy
+    )  # type: ignore[assignment]
+    glyph_view = (
+        world.display_heading_map_for_cell_policy(pol_view, result.values, args.gamma)
+        if world.oriented_mdp
+        else None
+    )
     viewer = PolicyViewer(
         world=world,
-        policy=world.representative_policy_per_cell(result.values, result.policy)
-        if world.oriented_mdp
-        else result.policy,  # type: ignore[arg-type]
+        policy=pol_view,  # type: ignore[arg-type]
         values=v_table,
         show_values=args.show_values,
-        representative_heading=world.representative_heading_per_cell(result.values)
-        if world.oriented_mdp
-        else None,
+        oriented_glyph_heading=glyph_view,
     )
     viewer.run()
 

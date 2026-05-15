@@ -12,6 +12,7 @@ import time
 import tkinter as tk
 
 from .value_iteration import ValueIteration
+from .viewer import _oriented_turn_arc_world_xy
 from .world import (
     Action,
     GridCell,
@@ -140,6 +141,21 @@ class InteractiveValueIterationViewer:
 
         self.reset_btn = tk.Button(self.sidebar, text="Reset (V = 0)", command=self._on_reset, bg="#d32f2f", fg="white", activebackground="#b71c1c", **button_style)
         self.reset_btn.pack(pady=4)
+
+        if self.world.oriented_mdp:
+            tk.Label(
+                self.sidebar,
+                text=(
+                    "Modo orientado: por célula mostra argmax_a max_h Q (no start só h inicial).\n"
+                    "Seta = F; arco = L/R. O desenho usa argmax_h Q para essa ação (sem letras N/E/S/W)."
+                ),
+                font=("Courier New", 8),
+                fg="#9e9e9e",
+                bg="#1c1c1c",
+                anchor="w",
+                justify="left",
+                wraplength=self.sidebar_width_px - 8,
+            ).pack(anchor="w", pady=(6, 0))
 
         self._build_parameter_panel()
 
@@ -276,8 +292,8 @@ class InteractiveValueIterationViewer:
         self,
     ) -> tuple[dict[GridCell, MdpAction | None], dict[GridCell, Heading]]:
         if self.world.oriented_mdp:
-            h = self.world.representative_heading_per_cell(self.values)
-            p = self.world.representative_policy_per_cell(self.values, self.policy)
+            p = self.world.aggregated_policy_per_cell(self.values, self.gamma)
+            h = self.world.display_heading_map_for_cell_policy(p, self.values, self.gamma)
             return p, h
         return self.policy, {}  # type: ignore[return-value]
 
@@ -517,33 +533,62 @@ class InteractiveValueIterationViewer:
             if cell == self.world.goal:
                 continue
             x_m, y_m = self.world.world_xy(cell)
+
             if isinstance(action, OrientedAction):
+                heading = head_map.get(cell, Heading.N)
                 if action == OrientedAction.FORWARD:
-                    heading = head_map.get(cell, Heading.N)
                     unit_x, unit_y = _HEADING_UNIT_VEC[heading]
+                    start_px = self._world_to_canvas(
+                        x_m - unit_x * arrow_length_m / 2.0,
+                        y_m - unit_y * arrow_length_m / 2.0 - arrow_offset_m,
+                    )
+                    end_px = self._world_to_canvas(
+                        x_m + unit_x * arrow_length_m / 2.0,
+                        y_m + unit_y * arrow_length_m / 2.0 - arrow_offset_m,
+                    )
+                    self.canvas.create_line(
+                        start_px[0], start_px[1], end_px[0], end_px[1],
+                        fill=ARROW_COLOR,
+                        width=arrow_width_px,
+                        arrow=tk.LAST,
+                        arrowshape=(head_long, head_short, head_wide),
+                        capstyle=tk.ROUND,
+                    )
                 else:
-                    cx, cy = self._world_to_canvas(x_m, y_m)
-                    color = "#64b5f6"
-                    self.canvas.create_text(cx, cy, text=action.value, fill=color, font=("Arial", 14, "bold"))
-                    continue
+                    turn_left = action == OrientedAction.TURN_LEFT
+                    arc_xy = _oriented_turn_arc_world_xy(
+                        x_m, y_m, heading, turn_left, self.world.spacing_m * 0.13,
+                    )
+                    flat: list[float] = []
+                    for wx, wy in arc_xy:
+                        px, py = self._world_to_canvas(wx, wy)
+                        flat.extend([px, py])
+                    self.canvas.create_line(
+                        *flat,
+                        fill=ARROW_COLOR,
+                        width=arrow_width_px,
+                        smooth=True,
+                        arrow=tk.LAST,
+                        arrowshape=(head_long, head_short, head_wide),
+                    )
             else:
                 unit_x, unit_y = _ACTION_UNIT_VEC[action]
-            start_px = self._world_to_canvas(
-                x_m - unit_x * arrow_length_m / 2.0,
-                y_m - unit_y * arrow_length_m / 2.0 - arrow_offset_m,
-            )
-            end_px = self._world_to_canvas(
-                x_m + unit_x * arrow_length_m / 2.0,
-                y_m + unit_y * arrow_length_m / 2.0 - arrow_offset_m,
-            )
-            self.canvas.create_line(
-                start_px[0], start_px[1], end_px[0], end_px[1],
-                fill=ARROW_COLOR,
-                width=arrow_width_px,
-                arrow=tk.LAST,
-                arrowshape=(head_long, head_short, head_wide),
-                capstyle=tk.ROUND,
-            )
+                start_px = self._world_to_canvas(
+                    x_m - unit_x * arrow_length_m / 2.0,
+                    y_m - unit_y * arrow_length_m / 2.0 - arrow_offset_m,
+                )
+                end_px = self._world_to_canvas(
+                    x_m + unit_x * arrow_length_m / 2.0,
+                    y_m + unit_y * arrow_length_m / 2.0 - arrow_offset_m,
+                )
+                self.canvas.create_line(
+                    start_px[0], start_px[1], end_px[0], end_px[1],
+                    fill=ARROW_COLOR,
+                    width=arrow_width_px,
+                    arrow=tk.LAST,
+                    arrowshape=(head_long, head_short, head_wide),
+                    capstyle=tk.ROUND,
+                )
 
     def _draw_start_and_goal_markers(self) -> None:
         radius_px = max(10.0, self._meters_to_pixels(0.055))

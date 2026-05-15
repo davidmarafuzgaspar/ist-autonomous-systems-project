@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .world import Action, GridCell, IntersectionWorld, MdpAction, OrientedAction
+from .world import Action, GridCell, Heading, IntersectionWorld, MdpAction, OrientedAction
 
 
 ARROWS: dict[Action, str] = {
@@ -16,6 +16,25 @@ OBSTACLE_GLYPH = "##"
 GOAL_GLYPH = "GG"
 START_GLYPH = "SS"
 EMPTY_GLYPH = ".."
+
+HEADING_ARROWS: dict[Heading, str] = {
+    Heading.N: "^",
+    Heading.E: ">",
+    Heading.S: "v",
+    Heading.W: "<",
+}
+
+
+def oriented_policy_glyph(action: OrientedAction, cell_heading: Heading) -> str:
+    """Terminal glyph: forward = cardinal motion arrow; turns = in-place rotation symbols."""
+
+    if action == OrientedAction.FORWARD:
+        return HEADING_ARROWS[cell_heading]
+    if action == OrientedAction.TURN_LEFT:
+        return "\u21ba"  # ↺
+    if action == OrientedAction.TURN_RIGHT:
+        return "\u21bb"  # ↻
+    return action.value
 
 
 def print_layout(world: IntersectionWorld) -> None:
@@ -42,8 +61,14 @@ def print_policy(
     world: IntersectionWorld,
     policy: dict[GridCell, MdpAction | None],
     robot_pos: GridCell | None = None,
+    oriented_glyph_heading: dict[GridCell, Heading] | None = None,
 ) -> None:
-    """Print the policy as a grid of arrows, plus obstacles and markers."""
+    """Print the policy as a grid of arrows, plus obstacles and markers.
+
+    For oriented MDP, pass ``oriented_glyph_heading`` (internal draw heading per cell: argmax_h
+    Q for the **aggregated** action shown; not a claim about true path heading). ``F`` uses
+    ^/></v; ``L``/``R`` use ↺/↻. No heading letters are printed.
+    """
 
     print(_separator(world))
     for row in range(world.rows):
@@ -59,7 +84,9 @@ def print_policy(
             elif cell in policy and policy[cell] is not None:
                 act = policy[cell]
                 if isinstance(act, OrientedAction):
-                    cells.append(f" {act.value} ")
+                    h = (oriented_glyph_heading or {}).get(cell, Heading.N)
+                    glyph = oriented_policy_glyph(act, h)
+                    cells.append(f" {glyph} ")
                 else:
                     cells.append(f" {ARROWS[act]} ")
             else:

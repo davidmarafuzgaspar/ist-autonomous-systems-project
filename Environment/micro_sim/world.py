@@ -225,15 +225,33 @@ class IntersectionWorld:
             out[cell] = value if prev is None else max(prev, value)
         return out
 
-    def representative_policy_per_cell(
+    def bellman_action_value(
+        self,
+        state: MdpState,
+        action: MdpAction,
+        values: dict[MdpState, float],
+        gamma: float,
+    ) -> float:
+        """One-step Q(s, a) with deterministic dynamics (matches value iteration backup)."""
+
+        next_state, hit_wall = self.transition(state, action)
+        reward = self.reward_transition(state, action, next_state, hit_wall)
+        return reward + gamma * values.get(next_state, 0.0)
+
+    def aggregated_policy_per_cell(
         self,
         values: dict[MdpState, float],
-        policy: dict[MdpState, MdpAction | None],
+        gamma: float,
     ) -> dict[GridCell, MdpAction | None]:
-        """Pick the heading that maximises V(cell, h), then expose that action."""
+        """Per-cell action for oriented MDP: ``argmax_a max_h Q((cell,h), a)``.
+
+        At ``start`` only ``start_heading`` is used (known initial pose). Elsewhere no single
+        heading is assumed; the action is the best one achievable under **some** heading at that cell.
+        """
 
         if not self.oriented_mdp:
-            return policy  # type: ignore[return-value]
+            raise ValueError("aggregated_policy_per_cell is only defined for oriented_mdp")
+        actions = list(OrientedAction)
         result: dict[GridCell, MdpAction | None] = {}
         for row in range(self.rows):
             for col in range(self.cols):
@@ -244,33 +262,61 @@ class IntersectionWorld:
                     result[cell] = None
                     continue
                 if cell == self.start:
-                    best_heading = self.start_heading
-                else:
-                    best_heading = max(
-                        Heading,
-                        key=lambda h: values.get(PoseState(cell, h), float("-inf")),
+                    pose = PoseState(cell, self.start_heading)
+                    result[cell] = max(
+                        actions,
+                        key=lambda a: self.bellman_action_value(pose, a, values, gamma),
                     )
-                result[cell] = policy.get(PoseState(cell, best_heading))
+                    continue
+
+                def q_best_heading(a: OrientedAction) -> float:
+                    return max(
+                        self.bellman_action_value(PoseState(cell, h), a, values, gamma)
+                        for h in Heading
+                    )
+
+                result[cell] = max(actions, key=q_best_heading)
         return result
 
-    def representative_heading_per_cell(self, values: dict[MdpState, float]) -> dict[GridCell, Heading]:
-        """Heading that maximises V(cell, h) (for drawing FORWARD arrows)."""
+    def display_heading_for_cell_action(
+        self,
+        cell: GridCell,
+        action: MdpAction | None,
+        values: dict[MdpState, float],
+        gamma: float,
+    ) -> Heading:
+        """Heading **only** for drawing ``F`` / ``L`` / ``R`` (argmax_h Q for the chosen action).
+
+        Not shown as a letter in the UI. At ``start`` uses ``start_heading``.
+        """
+
+        if not self.oriented_mdp or action is None or not isinstance(action, OrientedAction):
+            return Heading.N
+        if cell == self.start:
+            return self.start_heading
+        return max(
+            Heading,
+            key=lambda h: (
+                self.bellman_action_value(PoseState(cell, h), action, values, gamma),
+                -h.value,
+            ),
+        )
+
+    def display_heading_map_for_cell_policy(
+        self,
+        cell_policy: dict[GridCell, MdpAction | None],
+        values: dict[MdpState, float],
+        gamma: float,
+    ) -> dict[GridCell, Heading]:
+        """Map each cell with a non-``None`` oriented action to a draw heading (see ``display_heading_for_cell_action``)."""
 
         if not self.oriented_mdp:
             return {}
         out: dict[GridCell, Heading] = {}
-        for row in range(self.rows):
-            for col in range(self.cols):
-                cell = GridCell(row, col)
-                if self.is_obstacle(cell):
-                    continue
-                if cell == self.start:
-                    out[cell] = self.start_heading
-                else:
-                    out[cell] = max(
-                        Heading,
-                        key=lambda h: values.get(PoseState(cell, h), float("-inf")),
-                    )
+        for cell, act in cell_policy.items():
+            if act is None or not isinstance(act, OrientedAction):
+                continue
+            out[cell] = self.display_heading_for_cell_action(cell, act, values, gamma)
         return out
 
     def next_state(self, cell: GridCell, action: Action) -> tuple[GridCell, bool]:
