@@ -3,11 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .config import BoardConfig
-from .geometry import Point2D
 
 
 BLACK = 1
 WHITE = 0
+
+
+@dataclass(frozen=True)
+class Point2D:
+    x: float
+    y: float
 
 
 @dataclass(frozen=True)
@@ -60,7 +65,6 @@ class CrossBoard:
         x_centers, y_centers = self.white_cell_centers()
         cells: list[WhiteCell] = []
         marker_id = 0
-
         for row, center_y in enumerate(y_centers):
             for col, center_x in enumerate(x_centers):
                 cells.append(
@@ -72,32 +76,19 @@ class CrossBoard:
                     )
                 )
                 marker_id += 1
-
         return cells
-
-    def markers(self) -> list[WhiteCell]:
-        return self.white_cells()
-
-    def marker_by_id(self, marker_id: int) -> WhiteCell | None:
-        for cell in self.white_cells():
-            if cell.marker_id == marker_id:
-                return cell
-        return None
 
     def is_line_at(self, x_m: float, y_m: float) -> bool:
         if not self.is_inside(x_m, y_m):
             return False
-
         half_width = self.config.line_width_m / 2.0
         tolerance = 1e-6
         line_extent = self.config.line_extent_m
         if abs(x_m) > line_extent + tolerance or abs(y_m) > line_extent + tolerance:
             return False
-
         on_vertical = any(abs(x_m - center) <= half_width + tolerance for center in self.line_centers())
         on_horizontal = any(abs(y_m - center) <= half_width + tolerance for center in self.line_centers())
         return on_vertical or on_horizontal
 
     def color_at(self, x_m: float, y_m: float) -> int:
         return BLACK if self.is_line_at(x_m, y_m) else WHITE
-

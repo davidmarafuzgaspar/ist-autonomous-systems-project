@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from .geometry import Point2D
+from .board import Point2D
 
 
 @dataclass(frozen=True)
@@ -67,4 +67,3 @@ def circle_intersects_rectangle(
     dx = center.x - closest_x
     dy = center.y - closest_y
     return dx * dx + dy * dy <= radius_m * radius_m
-

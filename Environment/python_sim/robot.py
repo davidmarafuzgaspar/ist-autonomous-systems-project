@@ -1,12 +1,35 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import math
+from dataclasses import dataclass, field
 
-from .board import BLACK, CrossBoard, WhiteCell
+from .board import BLACK, CrossBoard, Point2D, WhiteCell
 from .config import RobotConfig
-from .geometry import Point2D, Pose2D, clamp, transform_point, wrap_angle
 from .obstacles import RectangleObstacle, circle_intersects_rectangle, ray_distance_to_obstacles
+
+
+@dataclass(frozen=True)
+class Pose2D:
+    x: float
+    y: float
+    yaw: float
+
+
+def clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(value, maximum))
+
+
+def wrap_angle(angle: float) -> float:
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def transform_point(local_point: Point2D, pose: Pose2D) -> Point2D:
+    cos_a = math.cos(pose.yaw)
+    sin_a = math.sin(pose.yaw)
+    return Point2D(
+        x=pose.x + local_point.x * cos_a - local_point.y * sin_a,
+        y=pose.y + local_point.x * sin_a + local_point.y * cos_a,
+    )
 
 
 @dataclass(frozen=True)
@@ -76,27 +99,21 @@ class AlphaBot2Robot:
             y=self.pose.y + self.command.linear_m_s * math.sin(self.pose.yaw) * dt_s,
             yaw=wrap_angle(self.pose.yaw + self.command.angular_rad_s * dt_s),
         )
-
         center = Point2D(next_pose.x, next_pose.y)
         if not board.is_robot_inside(next_pose.x, next_pose.y, self.config.radius_m):
             self.command = RobotCommand()
             return
-
         if any(circle_intersects_rectangle(center, self.config.radius_m, obstacle) for obstacle in obstacles):
             self.command = RobotCommand()
             return
-
         self.pose = next_pose
 
     def line_sensor_positions(self) -> list[Point2D]:
         mid_index = (self.config.line_sensor_count - 1) / 2.0
-        positions = []
+        positions: list[Point2D] = []
         for index in range(self.config.line_sensor_count):
             lateral_offset = (mid_index - index) * self.config.line_sensor_spacing_m
-            local = Point2D(
-                x=self.config.line_sensor_local_x_m,
-                y=lateral_offset,
-            )
+            local = Point2D(x=self.config.line_sensor_local_x_m, y=lateral_offset)
             positions.append(transform_point(local, self.pose))
         return positions
 
@@ -112,10 +129,7 @@ class AlphaBot2Robot:
         return transform_point(local_left, self.pose), transform_point(local_right, self.pose)
 
     def camera_pose(self) -> tuple[Point2D, float]:
-        local_camera = Point2D(
-            x=self.config.camera_local_x_m,
-            y=self.config.camera_local_y_m,
-        )
+        local_camera = Point2D(x=self.config.camera_local_x_m, y=self.config.camera_local_y_m)
         return (
             transform_point(local_camera, self.pose),
             wrap_angle(self.pose.yaw + self.config.camera_yaw_offset_rad),
@@ -127,18 +141,15 @@ class AlphaBot2Robot:
         camera_position_m: Point2D,
         camera_yaw_rad: float,
     ) -> list[CameraDetection]:
-        visible_markers: list[CameraDetection] = []
-
-        for marker in board.markers():
+        visible: list[CameraDetection] = []
+        for marker in board.white_cells():
             detection = self._marker_detection(marker, camera_position_m, camera_yaw_rad)
             if detection is not None:
-                visible_markers.append(detection)
-
-        if not visible_markers:
+                visible.append(detection)
+        if not visible:
             return []
-
-        visible_markers.sort(key=lambda item: (item.distance_m, abs(item.bearing_rad), item.marker_id))
-        return visible_markers[:1]
+        visible.sort(key=lambda item: (item.distance_m, abs(item.bearing_rad), item.marker_id))
+        return visible[:1]
 
     def _marker_detection(
         self,
@@ -151,11 +162,9 @@ class AlphaBot2Robot:
         distance_m = math.hypot(dx, dy)
         if distance_m > self.config.camera_max_range_m:
             return None
-
         bearing_rad = wrap_angle(math.atan2(dy, dx) - camera_yaw_rad)
         if abs(bearing_rad) > self.config.camera_fov_rad / 2.0:
             return None
-
         return CameraDetection(
             marker_id=marker.marker_id,
             cell_row=marker.row,
@@ -175,7 +184,6 @@ class AlphaBot2Robot:
 
         left_pos, right_pos = self.obstacle_sensor_positions()
         direction = Point2D(x=math.cos(self.pose.yaw), y=math.sin(self.pose.yaw))
-
         left_distance = ray_distance_to_obstacles(
             origin=left_pos,
             direction=direction,
@@ -190,18 +198,14 @@ class AlphaBot2Robot:
         )
 
         camera_position_m, camera_yaw_rad = self.camera_pose()
-        camera_visible_markers = self.visible_markers(
-            board=board,
-            camera_position_m=camera_position_m,
-            camera_yaw_rad=camera_yaw_rad,
-        )
+        camera_visible_markers = self.visible_markers(board, camera_position_m, camera_yaw_rad)
         localized_cell = None
         if camera_visible_markers:
-            best_marker = camera_visible_markers[0]
+            best = camera_visible_markers[0]
             localized_cell = CellLocalization(
-                marker_id=best_marker.marker_id,
-                cell_row=best_marker.cell_row,
-                cell_col=best_marker.cell_col,
+                marker_id=best.marker_id,
+                cell_row=best.cell_row,
+                cell_col=best.cell_col,
             )
 
         return SensorSnapshot(
@@ -219,4 +223,3 @@ class AlphaBot2Robot:
             camera_visible_markers=camera_visible_markers,
             localized_cell=localized_cell,
         )
-

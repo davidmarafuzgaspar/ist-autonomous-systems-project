@@ -3,11 +3,12 @@ from __future__ import annotations
 import math
 import tkinter as tk
 
+from .robot import SensorSnapshot
 from .simulation import AlphaBotSimulation
 
 
 class SimulationViewer:
-    def __init__(self, simulation: AlphaBotSimulation, dt_s: float = 0.02) -> None:
+    def __init__(self, simulation: AlphaBotSimulation, dt_s: float = 0.05) -> None:
         self.simulation = simulation
         self.dt_s = dt_s
         self.window = tk.Tk()
@@ -70,7 +71,7 @@ class SimulationViewer:
         extent = self.simulation.board.config.half_extent_m + self.simulation.board.config.margin_m
         return meters * self.canvas_size_px / (2.0 * extent)
 
-    def _draw(self, snapshot) -> None:
+    def _draw(self, snapshot: SensorSnapshot) -> None:
         self.canvas.delete("all")
         self._draw_board()
         self._draw_markers(snapshot)
@@ -95,14 +96,14 @@ class SimulationViewer:
             x1, y1 = self._world_to_canvas(line_extent, center)
             self.canvas.create_line(x0, y0, x1, y1, fill="black", width=line_width)
 
-    def _draw_markers(self, snapshot) -> None:
+    def _draw_markers(self, snapshot: SensorSnapshot) -> None:
         visible_marker_ids = {marker.marker_id for marker in snapshot.camera_visible_markers}
         localized_marker_id = None
         if snapshot.localized_cell is not None:
             localized_marker_id = snapshot.localized_cell.marker_id
 
         marker_half_size_px = max(8.0, self._meters_to_pixels(self.simulation.board.white_cell_size_m() * 0.16))
-        for marker in self.simulation.markers():
+        for marker in self.simulation.white_cells():
             px, py = self._world_to_canvas(marker.center_m.x, marker.center_m.y)
 
             fill = "#f4f4f4"
@@ -137,7 +138,7 @@ class SimulationViewer:
             x1, y1 = self._world_to_canvas(obstacle.max_x_m, obstacle.min_y_m)
             self.canvas.create_rectangle(x0, y0, x1, y1, fill="#c96c28", outline="#7a3d14", width=2)
 
-    def _draw_robot(self, snapshot) -> None:
+    def _draw_robot(self, snapshot: SensorSnapshot) -> None:
         pose = self.simulation.robot.pose
         radius_px = self._meters_to_pixels(self.simulation.robot.config.radius_m)
         center_x, center_y = self._world_to_canvas(pose.x, pose.y)
@@ -159,11 +160,10 @@ class SimulationViewer:
         front_px = self._world_to_canvas(front_x, front_y)
         self.canvas.create_line(center_x, center_y, front_px[0], front_px[1], fill="white", width=4)
 
-        for index, point in enumerate(snapshot.line_positions_m, start=1):
+        for index, point in enumerate(snapshot.line_positions_m):
             px, py = self._world_to_canvas(point.x, point.y)
-            color = "#1f1f1f" if snapshot.line_binary[index - 1] else "#d9d9d9"
+            color = "#1f1f1f" if snapshot.line_binary[index] else "#d9d9d9"
             self.canvas.create_oval(px - 6, py - 6, px + 6, py + 6, fill=color, outline="#244")
-            self.canvas.create_text(px, py - 14, text=str(index), fill="#224", font=("Arial", 9, "bold"))
 
         for index, point in enumerate(snapshot.obstacle_positions_m):
             px, py = self._world_to_canvas(point.x, point.y)
@@ -178,7 +178,7 @@ class SimulationViewer:
             ray_end_px = self._world_to_canvas(end_x, end_y)
             self.canvas.create_line(px, py, ray_end_px[0], ray_end_px[1], fill=color, dash=(4, 2), width=2)
 
-    def _draw_camera(self, snapshot) -> None:
+    def _draw_camera(self, snapshot: SensorSnapshot) -> None:
         camera_position = snapshot.camera_position_m
         camera_px = self._world_to_canvas(camera_position.x, camera_position.y)
         fov = self.simulation.robot.config.camera_fov_rad
@@ -208,7 +208,7 @@ class SimulationViewer:
             outline="#0d47a1",
         )
 
-    def _draw_sidebar(self, snapshot) -> None:
+    def _draw_sidebar(self, snapshot: SensorSnapshot) -> None:
         left = self.canvas_size_px + 20
         self.canvas.create_text(
             left,
@@ -242,9 +242,7 @@ class SimulationViewer:
             )
             y += 24
 
-    def _localized_cell_text(self, snapshot) -> str:
+    def _localized_cell_text(self, snapshot: SensorSnapshot) -> str:
         if snapshot.localized_cell is None:
             return "localized: --"
-
         return f"via marker {snapshot.localized_cell.marker_id}"
-
