@@ -1,4 +1,4 @@
-"""Entry point: oriented MDP value iteration on the intersection grid."""
+"""MDP value iteration on the intersection grid."""
 
 from __future__ import annotations
 
@@ -13,10 +13,10 @@ ROLLOUT_STEPS = 40
 
 if __package__ in (None, ""):
     sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent))
-    from micro_sim.display import oriented_policy_glyph, print_layout, print_policy, print_values
-    from micro_sim.iteration_viewer import InteractiveValueIterationViewer
-    from micro_sim.value_iteration import ValueIteration
-    from micro_sim.world import IntersectionWorld, OrientedAction, PoseState
+    from mdp_algorithm.display import oriented_policy_glyph, print_layout, print_policy, print_values
+    from mdp_algorithm.iteration_viewer import InteractiveValueIterationViewer
+    from mdp_algorithm.value_iteration import ValueIteration
+    from mdp_algorithm.world import IntersectionWorld, OrientedAction, PoseState
 else:
     from .display import oriented_policy_glyph, print_layout, print_policy, print_values
     from .iteration_viewer import InteractiveValueIterationViewer
@@ -94,14 +94,15 @@ def _run_final() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Intersection MDP (F/L/R). Default: interactive viewer.",
+        description="MDP orientado (F/L/R). Default: viewer interativo.",
     )
     parser.add_argument(
         "--final",
         action="store_true",
-        help="print converged V*, policy and rollout (terminal only)",
+        help="VI + rollout no terminal (sem GUI)",
     )
     args = parser.parse_args()
+
     if args.final:
         _run_final()
     else:

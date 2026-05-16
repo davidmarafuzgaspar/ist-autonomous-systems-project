@@ -52,7 +52,6 @@ def _default_obstacles() -> set[GridCell]:
         GridCell(2, 0),
         GridCell(0, 1),
         GridCell(2, 3),
-        GridCell(3, 2),
         GridCell(3, 4),
     }
 
