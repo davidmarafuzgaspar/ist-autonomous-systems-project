@@ -1,29 +1,13 @@
-"""Interactive Tkinter viewer that steps through value iteration.
-
-Click "Next iteration" to apply one Bellman sweep across the grid.
-Each cell shows the current ``V(s)`` and a colored background so you
-can see the goal value propagating outward in real time. A green
-arrow shows the greedy action implied by the current ``V`` table.
-"""
+"""Interactive Tkinter viewer: step through Bellman value iteration."""
 
 from __future__ import annotations
 
+import math
 import time
 import tkinter as tk
 
 from .value_iteration import ValueIteration
-from .viewer import _oriented_turn_arc_world_xy
-from .world import (
-    Action,
-    GridCell,
-    Heading,
-    IntersectionWorld,
-    MdpAction,
-    MdpState,
-    OrientedAction,
-    PoseState,
-)
-
+from .world import GridCell, Heading, IntersectionWorld, OrientedAction, PoseState
 
 LINE_WIDTH_M = 0.07
 OUTER_EXTENSION_M = 0.15
@@ -31,7 +15,6 @@ MARGIN_M = 0.12
 OBSTACLE_SIZE_M = 0.10
 
 ARROW_COLOR = "#1976d2"
-ARROW_OUTLINE = "#0d47a1"
 START_OUTLINE = "#2f8f46"
 GOAL_FILL = "#1565c0"
 GOAL_OUTLINE = "#0d47a1"
@@ -41,20 +24,35 @@ OBSTACLE_OUTLINE = "#7a3d14"
 POS_SCALE_MAX = 10000.0
 NEG_SCALE_MAX = 500.0
 
-
-_ACTION_UNIT_VEC: dict[Action, tuple[float, float]] = {
-    Action.UP: (0.0, 1.0),
-    Action.DOWN: (0.0, -1.0),
-    Action.LEFT: (-1.0, 0.0),
-    Action.RIGHT: (1.0, 0.0),
-}
-
 _HEADING_UNIT_VEC: dict[Heading, tuple[float, float]] = {
     Heading.N: (0.0, 1.0),
     Heading.E: (1.0, 0.0),
     Heading.S: (0.0, -1.0),
     Heading.W: (-1.0, 0.0),
 }
+
+
+def _oriented_turn_arc_world_xy(
+    x_m: float,
+    y_m: float,
+    heading: Heading,
+    turn_left: bool,
+    radius_m: float,
+    segments: int = 14,
+) -> list[tuple[float, float]]:
+    u0x, u0y = _HEADING_UNIT_VEC[heading]
+    h1 = heading.turn_left() if turn_left else heading.turn_right()
+    u1x, u1y = _HEADING_UNIT_VEC[h1]
+    pts: list[tuple[float, float]] = []
+    for i in range(segments + 1):
+        t = (i / segments) * (math.pi / 2)
+        pts.append(
+            (
+                x_m + radius_m * (math.cos(t) * u0x + math.sin(t) * u1x),
+                y_m + radius_m * (math.cos(t) * u0y + math.sin(t) * u1y),
+            )
+        )
+    return pts
 
 
 class InteractiveValueIterationViewer:
@@ -64,28 +62,36 @@ class InteractiveValueIterationViewer:
         gamma: float = 0.85,
         theta: float = 1e-3,
         max_iterations: int = 1000,
-        canvas_size_px: int = 700,
-        sidebar_width_px: int = 320,
         synchronous: bool = False,
+        canvas_size_px: int = 700,
+        sidebar_width_px: int = 300,
     ) -> None:
         self.world = world
         self.gamma = gamma
         self.theta = theta
         self.max_iterations = max_iterations
+        self.synchronous = synchronous
         self.canvas_size_px = canvas_size_px
         self.sidebar_width_px = sidebar_width_px
-        self.synchronous = synchronous
 
-        self.solver = ValueIteration(world, gamma=gamma, theta=theta, max_iterations=max_iterations, synchronous=synchronous)
-        self.values: dict[MdpState, float] = self.solver.initial_values()
-        self.policy: dict[MdpState, MdpAction | None] = self.solver.greedy_policy(self.values)
+        self.param_entries: dict[str, tk.Entry] = {}
+        self.param_message: tk.Label | None = None
+        self.algorithm_var: tk.StringVar
+
+        self.solver = self._make_solver()
+        self.values: dict[PoseState, float] = self.solver.initial_values()
+        self.policy: dict[PoseState, OrientedAction | None] = self.solver.greedy_policy(self.values)
         self.iteration = 0
-        self.last_delta: float = float("inf")
+        self.last_delta = float("inf")
         self.converged = False
 
         self.window = tk.Tk()
-        self.window.title("Micro Sim - Interactive Value Iteration")
+        self.window.title("Non-deterministic MDP — Value Iteration")
         self.window.configure(bg="#1c1c1c")
+        self.algorithm_var = tk.StringVar(
+            master=self.window,
+            value="jacobi" if synchronous else "gauss",
+        )
 
         self.canvas = tk.Canvas(
             self.window,
@@ -99,78 +105,92 @@ class InteractiveValueIterationViewer:
         self.sidebar = tk.Frame(self.window, bg="#1c1c1c", width=sidebar_width_px)
         self.sidebar.grid(row=0, column=1, padx=8, pady=8, sticky="n")
 
-        self.param_entries: dict[str, tk.Entry] = {}
-        self.param_message: tk.Label | None = None
-        self.algorithm_var = tk.StringVar(value="jacobi" if synchronous else "gauss")
-
         self._build_sidebar()
         self._draw()
+
+    def _make_solver(self) -> ValueIteration:
+        return ValueIteration(
+            self.world,
+            gamma=self.gamma,
+            theta=self.theta,
+            max_iterations=self.max_iterations,
+            synchronous=self.synchronous,
+        )
 
     def run(self) -> None:
         self.window.mainloop()
 
     def _build_sidebar(self) -> None:
-        title = tk.Label(
+        tk.Label(
             self.sidebar,
-            text="Value Iteration",
+            text="Stochastic VI",
             font=("Arial", 16, "bold"),
             fg="#eeeeee",
             bg="#1c1c1c",
-        )
-        title.pack(anchor="w", pady=(4, 10))
+        ).pack(anchor="w", pady=(4, 4))
+        pf, pl, pr = self.world.normalized_motion_probs()
+        tk.Label(
+            self.sidebar,
+            text=f"F slip: fwd {pf:.0%}  left {pl:.0%}  right {pr:.0%}",
+            font=("Arial", 9),
+            fg="#90caf9",
+            bg="#1c1c1c",
+            anchor="w",
+        ).pack(anchor="w", pady=(0, 8))
 
-        self.iter_label = tk.Label(self.sidebar, font=("Courier New", 12), fg="#eeeeee", bg="#1c1c1c", anchor="w", justify="left")
+        self.iter_label = tk.Label(
+            self.sidebar, font=("Courier New", 12), fg="#eeeeee", bg="#1c1c1c", anchor="w",
+        )
         self.iter_label.pack(anchor="w", pady=(0, 4))
 
-        self.delta_label = tk.Label(self.sidebar, font=("Courier New", 12), fg="#eeeeee", bg="#1c1c1c", anchor="w", justify="left")
+        self.delta_label = tk.Label(
+            self.sidebar, font=("Courier New", 12), fg="#eeeeee", bg="#1c1c1c", anchor="w",
+        )
         self.delta_label.pack(anchor="w", pady=(0, 4))
 
-        self.time_label = tk.Label(self.sidebar, text="time     : --", font=("Courier New", 12), fg="#90caf9", bg="#1c1c1c", anchor="w", justify="left")
+        self.time_label = tk.Label(
+            self.sidebar,
+            text="time     : --",
+            font=("Courier New", 12),
+            fg="#90caf9",
+            bg="#1c1c1c",
+            anchor="w",
+        )
         self.time_label.pack(anchor="w", pady=(0, 4))
 
-        self.status_label = tk.Label(self.sidebar, font=("Courier New", 12, "bold"), fg="#ffd54f", bg="#1c1c1c", anchor="w", justify="left")
+        self.status_label = tk.Label(
+            self.sidebar, font=("Courier New", 12, "bold"), fg="#ffd54f", bg="#1c1c1c", anchor="w",
+        )
         self.status_label.pack(anchor="w", pady=(0, 12))
 
-        button_style = {"font": ("Arial", 11, "bold"), "width": 22, "padx": 6, "pady": 4}
+        btn = {"font": ("Arial", 11, "bold"), "width": 20, "padx": 6, "pady": 4}
+        tk.Button(
+            self.sidebar, text="Next iteration", command=self._on_step,
+            bg="#388e3c", fg="white", activebackground="#2e7d32", **btn,
+        ).pack(pady=4)
+        tk.Button(
+            self.sidebar, text="Run to convergence", command=self._on_run_to_convergence,
+            bg="#1976d2", fg="white", activebackground="#1565c0", **btn,
+        ).pack(pady=4)
+        tk.Button(
+            self.sidebar, text="Reset (V = 0)", command=self._on_reset,
+            bg="#d32f2f", fg="white", activebackground="#b71c1c", **btn,
+        ).pack(pady=4)
 
-        self.step_btn = tk.Button(self.sidebar, text="Next iteration", command=self._on_step, bg="#388e3c", fg="white", activebackground="#2e7d32", **button_style)
-        self.step_btn.pack(pady=4)
 
-        self.run_btn = tk.Button(self.sidebar, text="Run to convergence", command=self._on_run_to_convergence, bg="#1976d2", fg="white", activebackground="#1565c0", **button_style)
-        self.run_btn.pack(pady=4)
-
-        self.reset_btn = tk.Button(self.sidebar, text="Reset (V = 0)", command=self._on_reset, bg="#d32f2f", fg="white", activebackground="#b71c1c", **button_style)
-        self.reset_btn.pack(pady=4)
-
-        if self.world.oriented_mdp:
-            tk.Label(
-                self.sidebar,
-                text=(
-                    "Modo orientado: por célula mostra argmax_a max_h Q (no start só h inicial).\n"
-                    "Seta = F; arco = L/R. O desenho usa argmax_h Q para essa ação (sem letras N/E/S/W)."
-                ),
-                font=("Courier New", 8),
-                fg="#9e9e9e",
-                bg="#1c1c1c",
-                anchor="w",
-                justify="left",
-                wraplength=self.sidebar_width_px - 8,
-            ).pack(anchor="w", pady=(6, 0))
-
+        self._build_algorithm_panel()
         self._build_parameter_panel()
 
-    def _build_parameter_panel(self) -> None:
-        separator = tk.Frame(self.sidebar, bg="#444", height=1)
-        separator.pack(fill="x", pady=(14, 10))
+    def _build_algorithm_panel(self) -> None:
+        tk.Frame(self.sidebar, bg="#444", height=1).pack(fill="x", pady=(14, 10))
 
-        algo_title = tk.Label(
+        tk.Label(
             self.sidebar,
             text="Algorithm",
             font=("Arial", 12, "bold"),
             fg="#eeeeee",
             bg="#1c1c1c",
-        )
-        algo_title.pack(anchor="w", pady=(0, 4))
+        ).pack(anchor="w", pady=(0, 4))
 
         radio_style = {
             "bg": "#1c1c1c",
@@ -182,7 +202,6 @@ class InteractiveValueIterationViewer:
             "anchor": "w",
             "highlightthickness": 0,
         }
-
         tk.Radiobutton(
             self.sidebar,
             text="Gauss-Seidel (in-place)",
@@ -191,7 +210,6 @@ class InteractiveValueIterationViewer:
             command=self._on_algorithm_change,
             **radio_style,
         ).pack(anchor="w")
-
         tk.Radiobutton(
             self.sidebar,
             text="Jacobi (synchronous)",
@@ -199,33 +217,45 @@ class InteractiveValueIterationViewer:
             value="jacobi",
             command=self._on_algorithm_change,
             **radio_style,
-        ).pack(anchor="w", pady=(0, 8))
+        ).pack(anchor="w", pady=(0, 4))
 
-        separator2 = tk.Frame(self.sidebar, bg="#444", height=1)
-        separator2.pack(fill="x", pady=(0, 10))
+    def _build_parameter_panel(self) -> None:
+        tk.Frame(self.sidebar, bg="#444", height=1).pack(fill="x", pady=(10, 10))
 
-        title = tk.Label(
+        tk.Label(
             self.sidebar,
-            text="Parameters",
+            text="Rewards & gamma",
             font=("Arial", 12, "bold"),
             fg="#eeeeee",
             bg="#1c1c1c",
-        )
-        title.pack(anchor="w", pady=(0, 6))
+        ).pack(anchor="w", pady=(0, 6))
 
         grid = tk.Frame(self.sidebar, bg="#1c1c1c")
         grid.pack(anchor="w")
 
-        param_specs: list[tuple[str, str, float]] = [
+        specs: list[tuple[str, str, float]] = [
             ("gamma", "gamma", self.gamma),
             ("goal_reward", "goal reward", self.world.goal_reward),
             ("collision_penalty", "collision", self.world.collision_penalty),
             ("away_from_goal_penalty", "away penalty", self.world.away_from_goal_penalty),
             ("step_cost", "step cost", self.world.step_cost),
             ("turn_90_reward", "turn 90°", self.world.turn_90_reward),
+            ("motion_prob_forward", "P fwd (F)", self.world.motion_prob_forward),
+            ("motion_prob_left", "P slip left", self.world.motion_prob_left),
+            ("motion_prob_right", "P slip right", self.world.motion_prob_right),
         ]
-
-        for row, (key, label, value) in enumerate(param_specs):
+        entry_style = {
+            "font": ("Courier New", 10),
+            "width": 10,
+            "bg": "#2b2b2b",
+            "fg": "#ffffff",
+            "insertbackground": "#ffffff",
+            "relief": "flat",
+            "highlightthickness": 1,
+            "highlightbackground": "#555",
+            "highlightcolor": "#1976d2",
+        }
+        for row, (key, label, value) in enumerate(specs):
             tk.Label(
                 grid,
                 text=label,
@@ -235,23 +265,12 @@ class InteractiveValueIterationViewer:
                 anchor="w",
                 width=14,
             ).grid(row=row, column=0, sticky="w", padx=(0, 6), pady=2)
-            entry = tk.Entry(
-                grid,
-                font=("Courier New", 10),
-                width=10,
-                bg="#2b2b2b",
-                fg="#ffffff",
-                insertbackground="#ffffff",
-                relief="flat",
-                highlightthickness=1,
-                highlightbackground="#555",
-                highlightcolor="#1976d2",
-            )
+            entry = tk.Entry(grid, **entry_style)
             entry.insert(0, self._format_param(value))
             entry.grid(row=row, column=1, sticky="w", pady=2)
             self.param_entries[key] = entry
 
-        apply_btn = tk.Button(
+        tk.Button(
             self.sidebar,
             text="Apply changes",
             command=self._on_apply_parameters,
@@ -259,11 +278,10 @@ class InteractiveValueIterationViewer:
             fg="white",
             activebackground="#5e35b1",
             font=("Arial", 11, "bold"),
-            width=22,
+            width=20,
             padx=6,
             pady=4,
-        )
-        apply_btn.pack(pady=(10, 4))
+        ).pack(pady=(10, 4))
 
         self.param_message = tk.Label(
             self.sidebar,
@@ -283,29 +301,9 @@ class InteractiveValueIterationViewer:
             return str(int(value))
         return f"{value:g}"
 
-    def _cell_value_map(self) -> dict[GridCell, float]:
-        if self.world.oriented_mdp:
-            return self.world.aggregate_max_v_per_cell(self.values)
-        return self.values  # type: ignore[return-value]
-
-    def _cell_policy_and_heading(
-        self,
-    ) -> tuple[dict[GridCell, MdpAction | None], dict[GridCell, Heading]]:
-        if self.world.oriented_mdp:
-            p = self.world.aggregated_policy_per_cell(self.values, self.gamma)
-            h = self.world.display_heading_map_for_cell_policy(p, self.values, self.gamma)
-            return p, h
-        return self.policy, {}  # type: ignore[return-value]
-
     def _on_algorithm_change(self) -> None:
         self.synchronous = self.algorithm_var.get() == "jacobi"
-        self.solver = ValueIteration(
-            self.world,
-            gamma=self.gamma,
-            theta=self.theta,
-            max_iterations=self.max_iterations,
-            synchronous=self.synchronous,
-        )
+        self.solver = self._make_solver()
         self._on_reset()
         if self.param_message is not None:
             label = "Jacobi (synchronous)" if self.synchronous else "Gauss-Seidel (in-place)"
@@ -319,6 +317,9 @@ class InteractiveValueIterationViewer:
             new_away = float(self.param_entries["away_from_goal_penalty"].get())
             new_step = float(self.param_entries["step_cost"].get())
             new_t90 = float(self.param_entries["turn_90_reward"].get())
+            new_pf = float(self.param_entries["motion_prob_forward"].get())
+            new_pl = float(self.param_entries["motion_prob_left"].get())
+            new_pr = float(self.param_entries["motion_prob_right"].get())
         except ValueError as exc:
             if self.param_message is not None:
                 self.param_message.config(text=f"invalid number: {exc}", fg="#ef9a9a")
@@ -328,30 +329,33 @@ class InteractiveValueIterationViewer:
             if self.param_message is not None:
                 self.param_message.config(text="gamma must be in (0, 1]", fg="#ef9a9a")
             return
+        if new_pf < 0 or new_pl < 0 or new_pr < 0:
+            if self.param_message is not None:
+                self.param_message.config(text="motion probs must be >= 0", fg="#ef9a9a")
+            return
+        if new_pf + new_pl + new_pr <= 0:
+            if self.param_message is not None:
+                self.param_message.config(text="motion probs must sum to > 0", fg="#ef9a9a")
+            return
 
+        self.gamma = new_gamma
         self.world.goal_reward = new_goal
         self.world.collision_penalty = new_collision
         self.world.away_from_goal_penalty = new_away
         self.world.step_cost = new_step
         self.world.turn_90_reward = new_t90
-
-        self.gamma = new_gamma
-        self.solver = ValueIteration(
-            self.world,
-            gamma=self.gamma,
-            theta=self.theta,
-            max_iterations=self.max_iterations,
-            synchronous=self.synchronous,
-        )
-
+        self.world.set_motion_probs(new_pf, new_pl, new_pr)
+        self.solver = self._make_solver()
         self._on_reset()
 
+        nf, nl, nr = self.world.normalized_motion_probs()
         if self.param_message is not None:
             self.param_message.config(
                 text=(
-                    f"applied. gamma={new_gamma}, goal={new_goal}, "
-                    f"coll={new_collision}, away={new_away}, step={new_step}, "
-                    f"t90={new_t90}"
+                    f"applied: gamma={new_gamma:g}, goal={new_goal:g}, "
+                    f"coll={new_collision:g}, away={new_away:g}, "
+                    f"step={new_step:g}, turn={new_t90:g}  |  "
+                    f"F: {nf:.0%}/{nl:.0%}/{nr:.0%}"
                 ),
                 fg="#a5d6a7",
             )
@@ -374,9 +378,15 @@ class InteractiveValueIterationViewer:
         return meters * self.canvas_size_px / (2.0 * self._view_extent_m)
 
     def _line_centers(self) -> list[float]:
-        n = self.world.cols
-        half_span = (n - 1) / 2.0
-        return [(index - half_span) * self.world.spacing_m for index in range(n)]
+        half_span = (self.world.cols - 1) / 2.0
+        return [(index - half_span) * self.world.spacing_m for index in range(self.world.cols)]
+
+    def _cell_policy_and_heading(
+        self,
+    ) -> tuple[dict[GridCell, OrientedAction | None], dict[GridCell, Heading]]:
+        pol = self.world.aggregated_policy_per_cell(self.values, self.gamma)
+        head = self.world.display_heading_map_for_cell_policy(pol, self.values, self.gamma)
+        return pol, head
 
     def _on_step(self) -> None:
         if self.converged or self.iteration >= self.max_iterations:
@@ -391,7 +401,6 @@ class InteractiveValueIterationViewer:
     def _on_run_to_convergence(self) -> None:
         if self.converged:
             return
-
         algo_values = dict(self.values)
         algo_iter = self.iteration
         start = time.perf_counter()
@@ -400,16 +409,12 @@ class InteractiveValueIterationViewer:
             algo_iter += 1
             if delta < self.theta:
                 break
-        algo_time_ms = (time.perf_counter() - start) * 1000.0
-        algo_iters_done = algo_iter - self.iteration
-
+        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        iters_done = algo_iter - self.iteration
         while not self.converged and self.iteration < self.max_iterations:
             self._on_step()
             self.window.update_idletasks()
-
-        self.time_label.config(
-            text=f"time     : {algo_time_ms:.3f} ms  ({algo_iters_done} iters)"
-        )
+        self.time_label.config(text=f"time     : {elapsed_ms:.1f} ms ({iters_done} iters)")
 
     def _on_reset(self) -> None:
         self.values = self.solver.initial_values()
@@ -426,7 +431,7 @@ class InteractiveValueIterationViewer:
         self._draw_value_overlays()
         self._draw_obstacles()
         self._draw_policy_arrows()
-        self._draw_start_and_goal_markers()
+        self._draw_start_and_goal()
         self._update_sidebar_labels()
 
     def _update_sidebar_labels(self) -> None:
@@ -445,21 +450,18 @@ class InteractiveValueIterationViewer:
         x0, y0 = self._world_to_canvas(-half, half)
         x1, y1 = self._world_to_canvas(half, -half)
         self.canvas.create_rectangle(x0, y0, x1, y1, fill="white", outline="#444", width=2)
-
         line_width_px = self._meters_to_pixels(LINE_WIDTH_M)
-        line_extent = half
         for center in self._line_centers():
-            x0, y0 = self._world_to_canvas(center, line_extent)
-            x1, y1 = self._world_to_canvas(center, -line_extent)
+            x0, y0 = self._world_to_canvas(center, half)
+            x1, y1 = self._world_to_canvas(center, -half)
             self.canvas.create_line(x0, y0, x1, y1, fill="black", width=line_width_px)
-
-            x0, y0 = self._world_to_canvas(-line_extent, center)
-            x1, y1 = self._world_to_canvas(line_extent, center)
+            x0, y0 = self._world_to_canvas(-half, center)
+            x1, y1 = self._world_to_canvas(half, center)
             self.canvas.create_line(x0, y0, x1, y1, fill="black", width=line_width_px)
 
     def _draw_value_overlays(self) -> None:
         box_half_m = self.world.spacing_m * 0.42
-        cell_vals = self._cell_value_map()
+        cell_vals = self.world.aggregate_max_v_per_cell(self.values)
         for cell, value in cell_vals.items():
             if self.world.is_obstacle(cell):
                 continue
@@ -467,30 +469,23 @@ class InteractiveValueIterationViewer:
             x0, y0 = self._world_to_canvas(x_m - box_half_m, y_m + box_half_m)
             x1, y1 = self._world_to_canvas(x_m + box_half_m, y_m - box_half_m)
             fill = self._value_to_color(value)
-            self.canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline="#555", width=1)
-
-            text_color = "#000000" if self._is_light(fill) else "#ffffff"
+            self.canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline="#666", width=1)
             cx, cy = self._world_to_canvas(x_m, y_m)
             self.canvas.create_text(
-                cx,
-                cy - self._meters_to_pixels(0.02),
+                cx, cy,
                 text=self._format_value(value),
-                fill=text_color,
-                font=("Courier New", 11, "bold"),
+                fill="#111111" if self._is_light(fill) else "#ffffff",
+                font=("Courier New", 9, "bold"),
             )
 
     def _value_to_color(self, value: float) -> str:
         if value > 0:
             t = min(1.0, value / POS_SCALE_MAX)
-            r = int(255 - 165 * t)
-            g = int(255 - 50 * t)
-            b = int(255 - 200 * t)
+            r, g, b = int(255 - 165 * t), int(255 - 50 * t), int(255 - 200 * t)
             return f"#{r:02x}{g:02x}{b:02x}"
         if value < 0:
             t = min(1.0, abs(value) / NEG_SCALE_MAX)
-            r = int(255 - 30 * t)
-            g = int(255 - 180 * t)
-            b = int(255 - 180 * t)
+            r, g, b = int(255 - 30 * t), int(255 - 180 * t), int(255 - 180 * t)
             return f"#{r:02x}{g:02x}{b:02x}"
         return "#ffffff"
 
@@ -499,14 +494,11 @@ class InteractiveValueIterationViewer:
         r = int(hex_color[1:3], 16)
         g = int(hex_color[3:5], 16)
         b = int(hex_color[5:7], 16)
-        luminance = 0.299 * r + 0.587 * g + 0.114 * b
-        return luminance > 140.0
+        return 0.299 * r + 0.587 * g + 0.114 * b > 140.0
 
     @staticmethod
     def _format_value(value: float) -> str:
-        if abs(value) >= 1000.0:
-            return f"{value:.0f}"
-        return f"{value:.1f}"
+        return f"{value:.0f}" if abs(value) >= 1000.0 else f"{value:.1f}"
 
     def _draw_obstacles(self) -> None:
         half = OBSTACLE_SIZE_M / 2.0
@@ -514,115 +506,54 @@ class InteractiveValueIterationViewer:
             x_m, y_m = self.world.world_xy(cell)
             x0, y0 = self._world_to_canvas(x_m - half, y_m + half)
             x1, y1 = self._world_to_canvas(x_m + half, y_m - half)
-            self.canvas.create_rectangle(x0, y0, x1, y1, fill=OBSTACLE_FILL, outline=OBSTACLE_OUTLINE, width=2)
+            self.canvas.create_rectangle(
+                x0, y0, x1, y1, fill=OBSTACLE_FILL, outline=OBSTACLE_OUTLINE, width=2,
+            )
 
     def _draw_policy_arrows(self) -> None:
         if self.iteration == 0:
             return
-        arrow_length_m = self.world.spacing_m * 0.28
-        arrow_width_px = max(2.5, self._meters_to_pixels(0.010))
-        head_long = max(8.0, self._meters_to_pixels(0.020))
-        head_short = max(10.0, self._meters_to_pixels(0.024))
-        head_wide = max(5.0, self._meters_to_pixels(0.014))
-        arrow_offset_m = self.world.spacing_m * 0.12
+        arrow_len = self.world.spacing_m * 0.28
+        arrow_w = max(2.5, self._meters_to_pixels(0.010))
+        head = (max(8.0, self._meters_to_pixels(0.020)), max(10.0, self._meters_to_pixels(0.024)), max(5.0, self._meters_to_pixels(0.014)))
+        y_off = self.world.spacing_m * 0.12
 
         pol, head_map = self._cell_policy_and_heading()
         for cell, action in pol.items():
-            if action is None:
-                continue
-            if cell == self.world.goal:
+            if action is None or cell == self.world.goal:
                 continue
             x_m, y_m = self.world.world_xy(cell)
+            draw_h = head_map.get(cell, Heading.N)
 
-            if isinstance(action, OrientedAction):
-                heading = head_map.get(cell, Heading.N)
-                if action == OrientedAction.FORWARD:
-                    unit_x, unit_y = _HEADING_UNIT_VEC[heading]
-                    start_px = self._world_to_canvas(
-                        x_m - unit_x * arrow_length_m / 2.0,
-                        y_m - unit_y * arrow_length_m / 2.0 - arrow_offset_m,
-                    )
-                    end_px = self._world_to_canvas(
-                        x_m + unit_x * arrow_length_m / 2.0,
-                        y_m + unit_y * arrow_length_m / 2.0 - arrow_offset_m,
-                    )
-                    self.canvas.create_line(
-                        start_px[0], start_px[1], end_px[0], end_px[1],
-                        fill=ARROW_COLOR,
-                        width=arrow_width_px,
-                        arrow=tk.LAST,
-                        arrowshape=(head_long, head_short, head_wide),
-                        capstyle=tk.ROUND,
-                    )
-                else:
-                    turn_left = action == OrientedAction.TURN_LEFT
-                    arc_xy = _oriented_turn_arc_world_xy(
-                        x_m, y_m, heading, turn_left, self.world.spacing_m * 0.13,
-                    )
-                    flat: list[float] = []
-                    for wx, wy in arc_xy:
-                        px, py = self._world_to_canvas(wx, wy)
-                        flat.extend([px, py])
-                    self.canvas.create_line(
-                        *flat,
-                        fill=ARROW_COLOR,
-                        width=arrow_width_px,
-                        smooth=True,
-                        arrow=tk.LAST,
-                        arrowshape=(head_long, head_short, head_wide),
-                    )
-            else:
-                unit_x, unit_y = _ACTION_UNIT_VEC[action]
-                start_px = self._world_to_canvas(
-                    x_m - unit_x * arrow_length_m / 2.0,
-                    y_m - unit_y * arrow_length_m / 2.0 - arrow_offset_m,
-                )
-                end_px = self._world_to_canvas(
-                    x_m + unit_x * arrow_length_m / 2.0,
-                    y_m + unit_y * arrow_length_m / 2.0 - arrow_offset_m,
-                )
+            if action == OrientedAction.FORWARD:
+                ux, uy = _HEADING_UNIT_VEC[draw_h]
+                s = self._world_to_canvas(x_m - ux * arrow_len / 2, y_m - uy * arrow_len / 2 - y_off)
+                e = self._world_to_canvas(x_m + ux * arrow_len / 2, y_m + uy * arrow_len / 2 - y_off)
                 self.canvas.create_line(
-                    start_px[0], start_px[1], end_px[0], end_px[1],
-                    fill=ARROW_COLOR,
-                    width=arrow_width_px,
-                    arrow=tk.LAST,
-                    arrowshape=(head_long, head_short, head_wide),
-                    capstyle=tk.ROUND,
+                    *s, *e, fill=ARROW_COLOR, width=arrow_w, arrow=tk.LAST,
+                    arrowshape=head, capstyle=tk.ROUND,
+                )
+            else:
+                arc = _oriented_turn_arc_world_xy(
+                    x_m, y_m, draw_h, action == OrientedAction.TURN_LEFT, self.world.spacing_m * 0.13,
+                )
+                flat: list[float] = []
+                for wx, wy in arc:
+                    px, py = self._world_to_canvas(wx, wy)
+                    flat.extend([px, py])
+                self.canvas.create_line(
+                    *flat, fill=ARROW_COLOR, width=arrow_w, smooth=True, arrow=tk.LAST, arrowshape=head,
                 )
 
-    def _draw_start_and_goal_markers(self) -> None:
-        radius_px = max(10.0, self._meters_to_pixels(0.055))
+    def _draw_start_and_goal(self) -> None:
+        r_px = max(10.0, self._meters_to_pixels(0.055))
+        sx, sy = self._world_to_canvas(*self.world.world_xy(self.world.start))
+        self.canvas.create_oval(sx - r_px, sy - r_px, sx + r_px, sy + r_px, outline=START_OUTLINE, width=4)
+        self.canvas.create_text(sx, sy + r_px + 12, text="S", fill=START_OUTLINE, font=("Arial", 11, "bold"))
+        ux, uy = _HEADING_UNIT_VEC[self.world.start_heading]
+        tick = self._meters_to_pixels(self.world.spacing_m * 0.22)
+        self.canvas.create_line(sx, sy, sx + ux * tick, sy - uy * tick, fill=START_OUTLINE, width=4, capstyle=tk.ROUND)
 
-        start_x_m, start_y_m = self.world.world_xy(self.world.start)
-        sx, sy = self._world_to_canvas(start_x_m, start_y_m)
-        self.canvas.create_oval(
-            sx - radius_px, sy - radius_px,
-            sx + radius_px, sy + radius_px,
-            fill="",
-            outline=START_OUTLINE,
-            width=4,
-        )
-        self.canvas.create_text(sx, sy + radius_px + 12, text="S", fill=START_OUTLINE, font=("Arial", 11, "bold"))
-
-        if self.world.oriented_mdp:
-            ux, uy = _HEADING_UNIT_VEC[self.world.start_heading]
-            tick = self._meters_to_pixels(self.world.spacing_m * 0.22)
-            self.canvas.create_line(
-                sx, sy,
-                sx + ux * tick,
-                sy - uy * tick,
-                fill=START_OUTLINE,
-                width=4,
-                capstyle=tk.ROUND,
-            )
-
-        goal_x_m, goal_y_m = self.world.world_xy(self.world.goal)
-        gx, gy = self._world_to_canvas(goal_x_m, goal_y_m)
-        self.canvas.create_oval(
-            gx - radius_px, gy - radius_px,
-            gx + radius_px, gy + radius_px,
-            fill=GOAL_FILL,
-            outline=GOAL_OUTLINE,
-            width=3,
-        )
+        gx, gy = self._world_to_canvas(*self.world.world_xy(self.world.goal))
+        self.canvas.create_oval(gx - r_px, gy - r_px, gx + r_px, gy + r_px, fill=GOAL_FILL, outline=GOAL_OUTLINE, width=3)
         self.canvas.create_text(gx, gy, text="G", fill="white", font=("Arial", 13, "bold"))
