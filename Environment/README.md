@@ -2,6 +2,22 @@
 
 This folder contains the first simulation assets for the AlphaBot2 environment.
 
+## Q-learning adaptation (`q_learning`)
+
+1. **Fase A** — Value iteration no mapa `O0` → política ótima `pi0*` e rollout de referência.
+2. **Fase B** — Obstáculos mudam (`O1`, incluindo bloqueio no antigo caminho); o robô segue `pi0*`
+   até colidir; **Q-learning** atualiza `Q(s,a)` (inicializado com `Q0*` do MDP); compara com `pi1*`.
+
+```bash
+cd Environment
+python -m q_learning.main                    # viewer (recomendado)
+python -m q_learning.main --headless         # terminal
+python -m q_learning.main --phase-a-only
+python -m q_learning.main --headless --episodes 60 -q
+```
+
+Usa `mdp_algorithm` para o MDP; ficheiros: `agent.py`, `experiment.py`, `main.py`.
+
 ## Discrete MDP planner (`micro_sim`)
 
 `micro_sim` models the 5x5 intersection grid as a finite Markov Decision
