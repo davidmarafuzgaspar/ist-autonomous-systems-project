@@ -34,6 +34,13 @@ from rclpy.node import Node
 from std_msgs.msg import Int32MultiArray
 from geometry_msgs.msg import Twist
 
+from solver import (
+    ACTION_STRAIGHT,
+    ACTION_TURN_AROUND,
+    ACTION_TURN_LEFT,
+    ACTION_TURN_RIGHT,
+    Solver,
+)
 from world import GridWorld
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -58,16 +65,18 @@ SENSOR_WEIGHTS = [-2, -1, 0, 1, 2]  # +error → line right → turn right
 # ──────────────────────────────────────────────────────────────────────────
 # Phases
 # ──────────────────────────────────────────────────────────────────────────
-PHASE_FOLLOW         = 0
-PHASE_JUNCTION_ALIGN = 1
-PHASE_JUNCTION_SEARCH = 2
-PHASE_PAUSE          = 3
+PHASE_FOLLOW            = 0
+PHASE_JUNCTION_ALIGN    = 1
+PHASE_JUNCTION_SEARCH   = 2
+PHASE_PAUSE             = 3
+PHASE_GOAL              = 4
 
 PHASE_LABELS = {
     PHASE_FOLLOW:         'FOLLOW',
     PHASE_JUNCTION_ALIGN: 'ALIGN',
     PHASE_JUNCTION_SEARCH: 'SEARCH',
     PHASE_PAUSE:          'PAUSE',
+    PHASE_GOAL:           'GOAL',
 }
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -83,11 +92,12 @@ JUNCTION_MIN_STRAIGHT_BLACK = 4     # consecutive blacks (not e.g. [1,1,0,1,1])
 # Grid world  (0 = intersection, 1 = obstacle; row 0 = north)
 # ──────────────────────────────────────────────────────────────────────────
 MAP: list[list[int]] = [
-    [0, 0],
+    [0, 1],
     [0, 0],
 ]
 START: tuple[int, int] = (0, 0)       # (row, col)
 START_HEADING: str = "E"              # N | E | S | W
+GOAL: tuple[int, int] = (1, 1)        # (row, col)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Debug logging
@@ -158,7 +168,9 @@ class CrossHandler(Node):
         self._pending_twist_after_pause = None
 
         # --- Discrete grid pose (intersections) ---
-        self.world = GridWorld.from_matrix(MAP, START, START_HEADING)
+        self.world = GridWorld.from_matrix(MAP, START, START_HEADING, GOAL)
+        self.solver = Solver(self.world)
+        self.solver.train(log_fn=self.get_logger().info)
 
         # --- ROS Controller Interfaces ---
         self.pub = self.create_publisher(
@@ -175,8 +187,14 @@ class CrossHandler(Node):
 
         # --- Logger Information ---
         self.get_logger().info('AlphaBot2 cross handler ready (line follow + junctions)')
-        self.get_logger().info(f'Grid pose: {self.world.pose_str()}')
+        self.get_logger().info(f'Grid pose: {self.world.pose_str()}  goal={GOAL}')
         self._log_map()
+        self._log_solver_report()
+        if self.world.is_at_goal():
+            self._handle_goal_reached()
+            return
+        if self._maybe_start_with_solver_turn():
+            return
         self._log_control(
             f'Debug: PRINT_MAP={PRINT_MAP} PRINT_CONTROL_LOGS={PRINT_CONTROL_LOGS}'
         )
@@ -190,6 +208,27 @@ class CrossHandler(Node):
             f'JUNCTION_COOLDOWN_FORWARD={JUNCTION_COOLDOWN_FORWARD}s '
         )
 
+    def _log_solver_report(self) -> None:
+        """Emit a readable post-training policy summary."""
+        report = self.solver.format_policy_report()
+        for line in report.splitlines():
+            self.get_logger().info(line)
+
+    def _maybe_start_with_solver_turn(self) -> bool:
+        """Immediately apply startup turn policy at initial cell, if needed."""
+        action = self.solver.get_action(self.world.row, self.world.col, self.world.heading)
+        if action == ACTION_STRAIGHT:
+            return False
+
+        self.search_dir = action
+        self.phase = PHASE_JUNCTION_SEARCH
+        self.get_logger().info(
+            "Startup policy: turning in place at initial cell -> "
+            f"{self.solver.explain_action(self.world.row, self.world.col, self.world.heading)}"
+        )
+        self._arm_junction_search()
+        return True
+
     def _log_control(self, message: str) -> None:
         """Phase/sensor/CMD detail when PRINT_CONTROL_LOGS is enabled."""
         if PRINT_CONTROL_LOGS:
@@ -199,6 +238,19 @@ class CrossHandler(Node):
         """Print grid when PRINT_MAP is enabled."""
         if PRINT_MAP:
             self.world.print_map(self.get_logger())
+
+    def _handle_goal_reached(self) -> None:
+        """Stop the robot and report mission success."""
+        self.phase = PHASE_GOAL
+        self._publish_zero_cmd()
+        self.get_logger().info('')
+        self.get_logger().info('========================================')
+        self.get_logger().info(
+            f'SUCCESS: goal {GOAL} reached — {self.world.pose_str()}'
+        )
+        self.get_logger().info('========================================')
+        self.get_logger().info('')
+        self._log_map()
 
     def _schedule_phase_pause(
         self,
@@ -278,10 +330,21 @@ class CrossHandler(Node):
 
     def _arm_junction_search(self) -> None:
         """Start SEARCH: spin in place; defer line-acquire until cooldown elapses."""
+        if self.search_dir == ACTION_STRAIGHT:
+            self.search_line_allowed_after = 0.0
+            self._log_control('  SEARCH [straight] -> no rotation, resume FOLLOW')
+            self._junction_cooldown_pending = True
+            self._schedule_phase_pause(
+                PHASE_FOLLOW,
+                pause_sec=JUNCTION_PAUSE_AFTER_SEARCH,
+                label='line follow',
+            )
+            return
+
         self.search_line_allowed_after = (
             time.monotonic() + JUNCTION_COOLDOWN_SEARCH
         )
-        ang = ANGULAR_SEARCH if self.search_dir == 'left' else -ANGULAR_SEARCH
+        ang = self._search_angular_velocity()
         twist = Twist()
         twist.angular.z = ang
         self._publish(twist)
@@ -302,6 +365,10 @@ class CrossHandler(Node):
             f'{_state_label(self.phase)}  binary={sensors.binary}  '
             f'sum={sensors.total_black}'
         )
+
+        if self.phase == PHASE_GOAL:
+            self._publish_zero_cmd()
+            return
 
         if self._handle_phase_pause():
             return
@@ -327,13 +394,39 @@ class CrossHandler(Node):
         if junction:
             self.last_twist = Twist()
             if not self.world.step_to_next_intersection():
-                self.get_logger().error(
-                    f'Grid: cannot advance from {self.world.pose_str()} '
-                    f'along heading (blocked or out of bounds)'
+                action = self.solver.get_action(
+                    self.world.row, self.world.col, self.world.heading
                 )
+                self.search_dir = action
+                self.get_logger().info(
+                    f"Solver decision: {self.solver.explain_action(self.world.row, self.world.col, self.world.heading)}"
+                )
+                if action == ACTION_STRAIGHT:
+                    self.get_logger().error(
+                        f'Grid: cannot advance from {self.world.pose_str()} '
+                        f'along heading (blocked or out of bounds)'
+                    )
+                    return
+                else:
+                    self.get_logger().info(
+                        'Grid: forward edge blocked at this junction; '
+                        'switching directly to SEARCH turn-in-place'
+                    )
+                    self.phase = PHASE_JUNCTION_SEARCH
+                    self._arm_junction_search()
+                    return
+            elif self.world.is_at_goal():
+                self._handle_goal_reached()
+                return
             else:
                 self._log_map()
-            self.search_dir = self.world.heading_to_search_dir()
+                action = self.solver.get_action(
+                    self.world.row, self.world.col, self.world.heading
+                )
+                self.search_dir = action
+                self.get_logger().info(
+                    f"Solver decision: {self.solver.explain_action(self.world.row, self.world.col, self.world.heading)}"
+                )
             self.phase = PHASE_JUNCTION_ALIGN
             self._log_control(
                 f'JUNCTION straight_black={straight_black} '
@@ -398,6 +491,8 @@ class CrossHandler(Node):
         """SEARCH: spin until branch acquired; cooldown defers line detection."""
         if self.search_line_allowed_after == 0.0:
             self._arm_junction_search()
+            if self.phase != PHASE_JUNCTION_SEARCH:
+                return
 
         ang = self._search_angular_velocity()
         centre_trio_on_line = (
@@ -408,7 +503,12 @@ class CrossHandler(Node):
 
         if centre_trio_on_line and line_acquire_ok:
             self.search_line_allowed_after = 0.0
-            self.world.turn_right()
+            if self.search_dir == ACTION_TURN_RIGHT:
+                self.world.turn_right()
+            elif self.search_dir == ACTION_TURN_LEFT:
+                self.world.turn_left()
+            elif self.search_dir == ACTION_TURN_AROUND:
+                self.world.turn_around()
             self._log_map()
             self._log_control(
                 f'SEARCH done – on line → FOLLOW  {self.world.pose_str()}'
@@ -441,9 +541,11 @@ class CrossHandler(Node):
 
     def _search_angular_velocity(self) -> float:
         """Signed angular.z for in-place SEARCH rotation."""
-        if self.search_dir == 'left':
+        if self.search_dir == ACTION_TURN_LEFT:
             return ANGULAR_SEARCH
-        return -ANGULAR_SEARCH
+        if self.search_dir in (ACTION_TURN_RIGHT, ACTION_TURN_AROUND):
+            return -ANGULAR_SEARCH
+        return 0.0
 
     def _publish(self, twist: Twist) -> None:
         self.pub.publish(twist)
