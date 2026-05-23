@@ -24,7 +24,10 @@ Junction pipeline (each cycle):
 Tune: LINEAR_FOLLOW, LINEAR_ALIGN, ANGULAR_SEARCH, KP/KD, junction pauses & cooldowns.
 """
 
+from __future__ import annotations
+
 import time
+from typing import NamedTuple
 
 import rclpy
 from rclpy.node import Node
@@ -41,7 +44,7 @@ WHITE_THRESHOLD = 700          # raw reading >= this → white (0)
 # Motion  (cmd_vel: linear.x m/s, angular.z rad/s)
 # ─────────────────────────────────────────────────────────────────────────
 LINEAR_FOLLOW = 0.20           # line follow
-LINEAR_ALIGN  = 0.15          # creep through cross bar
+LINEAR_ALIGN  = 0.13          # creep through cross bar
 ANGULAR_SEARCH = 4.0           # rad/s – spin during SEARCH phase
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -74,6 +77,27 @@ JUNCTION_PAUSE_AFTER_SEARCH = 0.5   # s – stop after SEARCH, before FOLLOW
 JUNCTION_COOLDOWN_SEARCH    = 0.5   # s – ignore [1,1,1] at start of SEARCH
 JUNCTION_COOLDOWN_FORWARD   = 1.0   # s – ignore junction detect after follow resumes
 JUNCTION_MIN_STRAIGHT_BLACK = 4     # consecutive blacks (not e.g. [1,1,0,1,1])
+
+
+class LineSensors(NamedTuple):
+    """Binary line-sensor snapshot: [fl, cl, c, cr, fr]; 1 = black."""
+
+    binary: list[int]
+    fl: int
+    cl: int
+    c: int
+    cr: int
+    fr: int
+    total_black: int
+
+    @classmethod
+    def from_msg(cls, msg: Int32MultiArray) -> LineSensors | None:
+        raw = list(msg.data)
+        if len(raw) < 5:
+            return None
+        binary = [0 if v >= WHITE_THRESHOLD else 1 for v in raw]
+        fl, cl, c, cr, fr = binary
+        return cls(binary, fl, cl, c, cr, fr, sum(binary))
 
 
 def max_consecutive_black(binary: list[int]) -> int:
@@ -232,141 +256,157 @@ class CrossHandler(Node):
             f'(ignore [1,1,1] for {JUNCTION_COOLDOWN_SEARCH}s)'
         )
 
-    def sensor_callback(self, msg: Int32MultiArray):
-        raw = list(msg.data)
-        if len(raw) < 5:
+    # ── Pipeline: sensor ingress and phase dispatch ──────────────────────── #
+
+    def sensor_callback(self, msg: Int32MultiArray) -> None:
+        """Main control loop entry: one update per line-sensor message."""
+        sensors = LineSensors.from_msg(msg)
+        if sensors is None:
             return
 
-        s = [0 if v >= WHITE_THRESHOLD else 1 for v in raw]
-        fl, cl, c, cr, fr = s
-        total_black = sum(s)
-
         self.get_logger().info(
-            f'{_state_label(self.phase)}  binary={s}  sum={total_black}')
+            f'{_state_label(self.phase)}  binary={sensors.binary}  '
+            f'sum={sensors.total_black}'
+        )
 
         if self._handle_phase_pause():
             return
 
-        twist = Twist()
-
-        # ── FOLLOW: proportional line tracking ─────────────────────────────── #
         if self.phase == PHASE_FOLLOW:
+            self._run_follow(sensors)
+        elif self.phase == PHASE_JUNCTION_ALIGN:
+            self._run_align(sensors)
+        elif self.phase == PHASE_JUNCTION_SEARCH:
+            self._run_search(sensors)
 
-            # Junction: 4+ in a row; skip briefly after completing a turn
-            straight_black = max_consecutive_black(s)
-            on_cooldown = time.monotonic() < self.junction_ignore_until
-            junction = (
-                not on_cooldown
-                and straight_black >= JUNCTION_MIN_STRAIGHT_BLACK
+    def _run_follow(self, sensors: LineSensors) -> None:
+        """FOLLOW: P+D tracking; junction detect → ALIGN; line-lost hold."""
+        s = sensors.binary
+
+        straight_black = max_consecutive_black(s)
+        on_cooldown = time.monotonic() < self.junction_ignore_until
+        junction = (
+            not on_cooldown
+            and straight_black >= JUNCTION_MIN_STRAIGHT_BLACK
+        )
+
+        if junction:
+            self.last_twist = Twist()
+            self.search_dir = random.choice(['right'])
+            self.phase = PHASE_JUNCTION_ALIGN
+            self.get_logger().info(
+                f'JUNCTION straight_black={straight_black} '
+                f'→ ALIGN (will search {self.search_dir})'
+            )
+            twist = Twist()
+            twist.linear.x = LINEAR_ALIGN
+            twist.angular.z = 0.0
+            self._publish(twist)
+            return
+
+        if sensors.total_black == 0:
+            self.pub.publish(self.last_twist)
+            self.get_logger().warn(
+                f'Line lost – persisting last cmd '
+                f'lin={self.last_twist.linear.x:.3f}  '
+                f'ang={self.last_twist.angular.z:.3f}'
+            )
+            return
+
+        active = [i for i, v in enumerate(s) if v == 1]
+        error = sum(SENSOR_WEIGHTS[i] for i in active) / len(active)
+        d_error = error - self.last_error
+        self.last_error = error
+        correction = (KP * error) + (KD * d_error)
+
+        twist = Twist()
+        twist.linear.x = LINEAR_FOLLOW
+        twist.angular.z = -correction
+        self._publish(twist)
+        self.get_logger().info(
+            f'  follow  error={error:.2f}  d_error={d_error:.2f}  '
+            f'correction={correction:.3f}'
+        )
+
+    def _run_align(self, sensors: LineSensors) -> None:
+        """ALIGN: creep forward through cross until cleared → pause → SEARCH."""
+        cleared = (sensors.fl == 0 and sensors.fr == 0) or (
+            sensors.total_black <= 3
+        )
+
+        if cleared:
+            self.get_logger().info(
+                f'ALIGN done → SEARCH next [{self.search_dir}]'
+            )
+            self._schedule_phase_pause(
+                PHASE_JUNCTION_SEARCH,
+                pause_sec=JUNCTION_PAUSE_AFTER_ALIGN,
+                label='search',
+            )
+            return
+
+        twist = Twist()
+        twist.linear.x = LINEAR_ALIGN
+        twist.angular.z = 0.0
+        self._publish(twist)
+        self.get_logger().info(
+            f'  aligning – sensors={sensors.binary}  sum={sensors.total_black}'
+        )
+
+    def _run_search(self, sensors: LineSensors) -> None:
+        """SEARCH: spin until branch acquired; cooldown defers line detection."""
+        if self.search_line_allowed_after == 0.0:
+            self._arm_junction_search()
+
+        ang = self._search_angular_velocity()
+        centre_trio_on_line = (
+            (sensors.cl == 1 and sensors.c == 1 and sensors.cr == 1)
+            or (sensors.fl == 0 and sensors.fr == 0)
+        )
+        line_acquire_ok = time.monotonic() >= self.search_line_allowed_after
+
+        if centre_trio_on_line and line_acquire_ok:
+            self.search_line_allowed_after = 0.0
+            self.get_logger().info('SEARCH done – centre on line → FOLLOW')
+            self._junction_cooldown_pending = True
+            self._schedule_phase_pause(
+                PHASE_FOLLOW,
+                pause_sec=JUNCTION_PAUSE_AFTER_SEARCH,
+                label='line follow',
+            )
+            return
+
+        twist = Twist()
+        twist.linear.x = 0.0
+        twist.angular.z = ang
+        self._publish(twist)
+
+        if not line_acquire_ok:
+            remaining = self.search_line_allowed_after - time.monotonic()
+            self.get_logger().info(
+                f'  SEARCH [{self.search_dir}]  ignore line '
+                f'{remaining:.2f}s left'
+            )
+        else:
+            centre = sensors.binary[1:4]
+            self.get_logger().info(
+                f'  SEARCH [{self.search_dir}]  centre={centre}  '
+                f'sensors={sensors.binary}'
             )
 
-            if junction:
-                self.last_twist = Twist()
-                self.search_dir = random.choice(['right'])
-                self.phase = PHASE_JUNCTION_ALIGN
-                self.get_logger().info(
-                    f'JUNCTION straight_black={straight_black} '
-                    f'→ ALIGN (will search {self.search_dir})'
-                )
-                twist.linear.x = LINEAR_ALIGN
-                twist.angular.z = 0.0
-                self._publish(twist)
-                return
+    def _search_angular_velocity(self) -> float:
+        """Signed angular.z for in-place SEARCH rotation."""
+        if self.search_dir == 'left':
+            return ANGULAR_SEARCH
+        return -ANGULAR_SEARCH
 
-            if total_black == 0:
-                # Lost – persist last known correction instead of stopping
-                self.pub.publish(self.last_twist)
-                self.get_logger().warn(
-                    f'Line lost – persisting last cmd '
-                    f'lin={self.last_twist.linear.x:.3f}  '
-                    f'ang={self.last_twist.angular.z:.3f}')
-                return
-           
-            active = [i for i, v in enumerate(s) if v == 1]
-            error  = sum(SENSOR_WEIGHTS[i] for i in active) / len(active)
-
-            d_error = error - self.last_error   # rate of change of error
-            self.last_error = error             # store for next callback
-
-            correction = (KP * error) + (KD * d_error)
-
-            twist.linear.x  = LINEAR_FOLLOW
-            twist.angular.z = -correction
-            self._publish(twist)
-            self.get_logger().info(
-                f'  follow  error={error:.2f}  d_error={d_error:.2f}  '
-                f'correction={correction:.3f}')
-            
-            return
-
-        # ── ALIGN: creep straight through cross bar ──────────────────────── #
-        if self.phase == PHASE_JUNCTION_ALIGN:
-
-            # Exit condition: outer sensors have cleared the bar AND
-            # at most 2 sensors are black (only the vertical line remains)
-            cleared = (fl == 0 and fr == 0) or (total_black <= 3)
-
-            if cleared:
-                self.get_logger().info(
-                    f'ALIGN done → SEARCH next [{self.search_dir}]'
-                )
-                self._schedule_phase_pause(
-                    PHASE_JUNCTION_SEARCH,
-                    pause_sec=JUNCTION_PAUSE_AFTER_ALIGN,
-                    label='search',
-                )
-            else:
-                # Still crossing the horizontal bar – creep straight
-                twist.linear.x  = LINEAR_ALIGN
-                twist.angular.z = 0.0
-                self._publish(twist)
-                self.get_logger().info(
-                    f'  aligning – sensors={s}  sum={total_black}')
-            return
-
-        # ── SEARCH: rotate until new branch centred (after cooldown) ───────── #
-        if self.phase == PHASE_JUNCTION_SEARCH:
-            if self.search_line_allowed_after == 0.0:
-                self._arm_junction_search()
-
-            ang = ANGULAR_SEARCH if self.search_dir == 'left' else -ANGULAR_SEARCH
-            centre_trio_on_line = (cl == 1 and c == 1 and cr == 1) or (fl == 0 and fr == 0)
-            line_acquire_ok = time.monotonic() >= self.search_line_allowed_after
-
-            if centre_trio_on_line and line_acquire_ok:
-                self.search_line_allowed_after = 0.0
-                self.get_logger().info(
-                    'SEARCH done – centre on line → FOLLOW'
-                )
-                self._junction_cooldown_pending = True
-                self._schedule_phase_pause(
-                    PHASE_FOLLOW,
-                    pause_sec=JUNCTION_PAUSE_AFTER_SEARCH,
-                    label='line follow',
-                )
-                return
-
-            twist.linear.x = 0.0
-            twist.angular.z = ang
-            self._publish(twist)
-            if not line_acquire_ok:
-                remaining = self.search_line_allowed_after - time.monotonic()
-                self.get_logger().info(
-                    f'  SEARCH [{self.search_dir}]  ignore line '
-                    f'{remaining:.2f}s left'
-                )
-            else:
-                self.get_logger().info(
-                    f'  SEARCH [{self.search_dir}]  centre={s[1:4]}  sensors={s}'
-                )
-            return
-        
-    def _publish(self, twist: Twist):
-            self.pub.publish(twist)
-            self.get_logger().info(
-                f'  CMD → lin={twist.linear.x:.3f}  ang={twist.angular.z:.3f}')
-            if self.phase == PHASE_FOLLOW:
-                self.last_twist = twist
+    def _publish(self, twist: Twist) -> None:
+        self.pub.publish(twist)
+        self.get_logger().info(
+            f'  CMD → lin={twist.linear.x:.3f}  ang={twist.angular.z:.3f}'
+        )
+        if self.phase == PHASE_FOLLOW:
+            self.last_twist = twist
 
 
 def main(args=None):
