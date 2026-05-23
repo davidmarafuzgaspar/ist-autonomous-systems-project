@@ -33,7 +33,8 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Int32MultiArray
 from geometry_msgs.msg import Twist
-import random
+
+from world import GridWorld
 
 # ──────────────────────────────────────────────────────────────────────────
 # Sensors
@@ -43,8 +44,8 @@ WHITE_THRESHOLD = 700          # raw reading >= this → white (0)
 # ──────────────────────────────────────────────────────────────────────────
 # Motion  (cmd_vel: linear.x m/s, angular.z rad/s)
 # ─────────────────────────────────────────────────────────────────────────
-LINEAR_FOLLOW = 0.20           # line follow
-LINEAR_ALIGN  = 0.13          # creep through cross bar
+LINEAR_FOLLOW = 0.17           # line follow
+LINEAR_ALIGN  = 0.12          # creep through cross bar
 ANGULAR_SEARCH = 4.0           # rad/s – spin during SEARCH phase
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -77,6 +78,22 @@ JUNCTION_PAUSE_AFTER_SEARCH = 0.5   # s – stop after SEARCH, before FOLLOW
 JUNCTION_COOLDOWN_SEARCH    = 0.5   # s – ignore [1,1,1] at start of SEARCH
 JUNCTION_COOLDOWN_FORWARD   = 1.0   # s – ignore junction detect after follow resumes
 JUNCTION_MIN_STRAIGHT_BLACK = 4     # consecutive blacks (not e.g. [1,1,0,1,1])
+
+# ──────────────────────────────────────────────────────────────────────────
+# Grid world  (0 = intersection, 1 = obstacle; row 0 = north)
+# ──────────────────────────────────────────────────────────────────────────
+MAP: list[list[int]] = [
+    [0, 0],
+    [0, 0],
+]
+START: tuple[int, int] = (0, 0)       # (row, col)
+START_HEADING: str = "E"              # N | E | S | W
+
+# ──────────────────────────────────────────────────────────────────────────
+# Debug logging
+# ──────────────────────────────────────────────────────────────────────────
+PRINT_MAP = True                      # ASCII grid after startup / junction / align
+PRINT_CONTROL_LOGS = False             # per-tick sensors, phases, CMD, P+D detail
 
 
 class LineSensors(NamedTuple):
@@ -140,6 +157,9 @@ class CrossHandler(Node):
         self._after_pause_phase = PHASE_FOLLOW
         self._pending_twist_after_pause = None
 
+        # --- Discrete grid pose (intersections) ---
+        self.world = GridWorld.from_matrix(MAP, START, START_HEADING)
+
         # --- ROS Controller Interfaces ---
         self.pub = self.create_publisher(
             Twist,
@@ -155,7 +175,12 @@ class CrossHandler(Node):
 
         # --- Logger Information ---
         self.get_logger().info('AlphaBot2 cross handler ready (line follow + junctions)')
-        self.get_logger().info(
+        self.get_logger().info(f'Grid pose: {self.world.pose_str()}')
+        self._log_map()
+        self._log_control(
+            f'Debug: PRINT_MAP={PRINT_MAP} PRINT_CONTROL_LOGS={PRINT_CONTROL_LOGS}'
+        )
+        self._log_control(
             f'Tuning: KP={KP} KD={KD} '
             f'LINEAR_FOLLOW={LINEAR_FOLLOW} LINEAR_ALIGN={LINEAR_ALIGN} '
             f'ANGULAR_SEARCH={ANGULAR_SEARCH} '
@@ -165,6 +190,15 @@ class CrossHandler(Node):
             f'JUNCTION_COOLDOWN_FORWARD={JUNCTION_COOLDOWN_FORWARD}s '
         )
 
+    def _log_control(self, message: str) -> None:
+        """Phase/sensor/CMD detail when PRINT_CONTROL_LOGS is enabled."""
+        if PRINT_CONTROL_LOGS:
+            self.get_logger().info(message)
+
+    def _log_map(self) -> None:
+        """Print grid when PRINT_MAP is enabled."""
+        if PRINT_MAP:
+            self.world.print_map(self.get_logger())
 
     def _schedule_phase_pause(
         self,
@@ -193,7 +227,7 @@ class CrossHandler(Node):
 
         self._publish_zero_cmd()
         dest = label or _state_label(next_phase)
-        self.get_logger().info(f'PAUSE {pause_sec:.2f}s → {dest}')
+        self._log_control(f'PAUSE {pause_sec:.2f}s → {dest}')
 
     def _handle_phase_pause(self) -> bool:
         """Run the pause state on each line-sensor callback.
@@ -226,7 +260,7 @@ class CrossHandler(Node):
             self._publish(pending)
             self._pending_twist_after_pause = None
 
-        self.get_logger().info(f'PAUSE done → {_state_label(self.phase)}')
+        self._log_control(f'PAUSE done → {_state_label(self.phase)}')
 
         if self.phase == PHASE_JUNCTION_SEARCH:
             self._arm_junction_search()
@@ -237,7 +271,7 @@ class CrossHandler(Node):
                 time.monotonic() + JUNCTION_COOLDOWN_FORWARD
             )
             self._junction_cooldown_pending = False
-            self.get_logger().info(
+            self._log_control(
                 f'Junction cooldown forward {JUNCTION_COOLDOWN_FORWARD:.2f}s '
                 f'(no re-detect)'
             )
@@ -251,7 +285,7 @@ class CrossHandler(Node):
         twist = Twist()
         twist.angular.z = ang
         self._publish(twist)
-        self.get_logger().info(
+        self._log_control(
             f'  SEARCH [{self.search_dir}] @ {ang:+.1f} rad/s '
             f'(ignore [1,1,1] for {JUNCTION_COOLDOWN_SEARCH}s)'
         )
@@ -264,7 +298,7 @@ class CrossHandler(Node):
         if sensors is None:
             return
 
-        self.get_logger().info(
+        self._log_control(
             f'{_state_label(self.phase)}  binary={sensors.binary}  '
             f'sum={sensors.total_black}'
         )
@@ -292,9 +326,16 @@ class CrossHandler(Node):
 
         if junction:
             self.last_twist = Twist()
-            self.search_dir = random.choice(['right'])
+            if not self.world.step_to_next_intersection():
+                self.get_logger().error(
+                    f'Grid: cannot advance from {self.world.pose_str()} '
+                    f'along heading (blocked or out of bounds)'
+                )
+            else:
+                self._log_map()
+            self.search_dir = self.world.heading_to_search_dir()
             self.phase = PHASE_JUNCTION_ALIGN
-            self.get_logger().info(
+            self._log_control(
                 f'JUNCTION straight_black={straight_black} '
                 f'→ ALIGN (will search {self.search_dir})'
             )
@@ -323,7 +364,7 @@ class CrossHandler(Node):
         twist.linear.x = LINEAR_FOLLOW
         twist.angular.z = -correction
         self._publish(twist)
-        self.get_logger().info(
+        self._log_control(
             f'  follow  error={error:.2f}  d_error={d_error:.2f}  '
             f'correction={correction:.3f}'
         )
@@ -335,7 +376,7 @@ class CrossHandler(Node):
         )
 
         if cleared:
-            self.get_logger().info(
+            self._log_control(
                 f'ALIGN done → SEARCH next [{self.search_dir}]'
             )
             self._schedule_phase_pause(
@@ -349,7 +390,7 @@ class CrossHandler(Node):
         twist.linear.x = LINEAR_ALIGN
         twist.angular.z = 0.0
         self._publish(twist)
-        self.get_logger().info(
+        self._log_control(
             f'  aligning – sensors={sensors.binary}  sum={sensors.total_black}'
         )
 
@@ -367,7 +408,11 @@ class CrossHandler(Node):
 
         if centre_trio_on_line and line_acquire_ok:
             self.search_line_allowed_after = 0.0
-            self.get_logger().info('SEARCH done – centre on line → FOLLOW')
+            self.world.turn_right()
+            self._log_map()
+            self._log_control(
+                f'SEARCH done – on line → FOLLOW  {self.world.pose_str()}'
+            )
             self._junction_cooldown_pending = True
             self._schedule_phase_pause(
                 PHASE_FOLLOW,
@@ -383,13 +428,13 @@ class CrossHandler(Node):
 
         if not line_acquire_ok:
             remaining = self.search_line_allowed_after - time.monotonic()
-            self.get_logger().info(
+            self._log_control(
                 f'  SEARCH [{self.search_dir}]  ignore line '
                 f'{remaining:.2f}s left'
             )
         else:
             centre = sensors.binary[1:4]
-            self.get_logger().info(
+            self._log_control(
                 f'  SEARCH [{self.search_dir}]  centre={centre}  '
                 f'sensors={sensors.binary}'
             )
@@ -402,7 +447,7 @@ class CrossHandler(Node):
 
     def _publish(self, twist: Twist) -> None:
         self.pub.publish(twist)
-        self.get_logger().info(
+        self._log_control(
             f'  CMD → lin={twist.linear.x:.3f}  ang={twist.angular.z:.3f}'
         )
         if self.phase == PHASE_FOLLOW:
