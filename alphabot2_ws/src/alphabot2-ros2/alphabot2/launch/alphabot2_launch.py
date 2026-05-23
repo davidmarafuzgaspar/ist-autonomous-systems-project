@@ -36,6 +36,15 @@ def generate_launch_description():
                 }],
     )
 
+    line_sensors_node = Node(
+        package="alphabot2",          
+        namespace=NAMESPACE,
+        executable="line_sensors",   
+        output="screen",
+            emulate_tty=True,
+        arguments=['--ros-args', '--log-level', 'WARN'], 
+     )
+
     ir_obstacle_sensors_node = Node(
         package="alphabot2",
         namespace=NAMESPACE,
@@ -79,16 +88,6 @@ def generate_launch_description():
        		 'camera_info_url': 'file:///home/deec/camera_info.yaml',
    	 }],
     )
-
-    
-    line_sensors_node = Node(
- 	 package="alphabot2",          # change if different package
-   	 namespace=NAMESPACE,
-   	 executable="line_sensors",    # your node executable name
-   	 output="screen",
-         emulate_tty=True,
-	 arguments=['--ros-args', '--log-level', 'WARN'], 
-     )
 
     return LaunchDescription([
         use_obstable_avoidance_emergency_stop_arg,
