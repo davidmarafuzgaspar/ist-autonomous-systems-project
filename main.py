@@ -1,35 +1,27 @@
 #!/usr/bin/env python3
 """
-AlphaBot2 – Robust Line Follower + Junction Handler
-=====================================================
-Track: solid black line on white background.
-Sensors [fl, cl, c, cr, fr] → 1 = black, 0 = white.
+AlphaBot2 – Line follower with junction handling
+================================================
+Track: black line on white. Sensors [fl, cl, c, cr, fr] → 1 = black, 0 = white.
 
-State machine (junction + pause):
+Junction pipeline (each cycle):
 ──────────────────────────────────────────────────────────────────────────────
-  PHASE_FOLLOW        Proportional controller keeps robot centred on [0,1,1,1,0].
-                      Transition → PHASE_JUNCTION_ALIGN
-                      when  4+ consecutive sensors on black (not scattered 4)
+  FOLLOW  →  ALIGN  →  SEARCH  →  FOLLOW
 
-  PHASE_JUNCTION_ALIGN  Creep through cross until cleared.
-                        Transition → PHASE_JUNCTION_TURN
+  FOLLOW   Track the line (weighted P+D). On 4+ consecutive blacks → ALIGN.
+           No pause on this transition.
 
-  PHASE_JUNCTION_TURN   Rotate until cl, c, cr all black; ignore that for the first
-                        JUNCTION_COOLDOWN_SEARCH so the robot can leave the old line.
-                        Transition → PHASE_FOLLOW
+  ALIGN    Creep forward through the cross bar until cleared → pause
+           (JUNCTION_PAUSE_AFTER_ALIGN) → SEARCH.
 
-  JUNCTION_PAUSE_AFTER_ALIGN   – full stop after ALIGN, before turn (s)
-  JUNCTION_PAUSE_AFTER_SEARCH  – full stop after turn, before line follow (s)
-                        No pause on follow→align.
+  SEARCH   Rotate in place until the new branch is centred ([1,1,1] on cl,c,cr).
+           Ignore that pattern for JUNCTION_COOLDOWN_SEARCH first (leave old line).
+           Then pause (JUNCTION_PAUSE_AFTER_SEARCH) → FOLLOW.
+
+  FOLLOW   After SEARCH, JUNCTION_COOLDOWN_FORWARD suppresses false junctions.
 
 ──────────────────────────────────────────────────────────────────────────────
-Tune these constants:
-  LINEAR_FOLLOW   – normal cruising speed
-  LINEAR_ALIGN    – slow creep through the horizontal bar
-  ANGULAR_TURN              – junction turn spin rate (rad/s)
-  JUNCTION_COOLDOWN_SEARCH  – ignore centre [1,1,1] this long after turn starts
-  JUNCTION_COOLDOWN_FORWARD – ignore new junction detect after resuming follow
-  KP              – proportional gain for line-follow angular correction
+Tune: LINEAR_FOLLOW, LINEAR_ALIGN, ANGULAR_SEARCH, KP/KD, junction pauses & cooldowns.
 """
 
 import time
@@ -47,10 +39,10 @@ WHITE_THRESHOLD = 700          # raw reading >= this → white (0)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Motion  (cmd_vel: linear.x m/s, angular.z rad/s)
-# ──────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────
 LINEAR_FOLLOW = 0.20           # line follow
 LINEAR_ALIGN  = 0.15          # creep through cross bar
-ANGULAR_TURN  = 4.0            # junction turn in place
+ANGULAR_SEARCH = 4.0           # rad/s – spin during SEARCH phase
 
 # ──────────────────────────────────────────────────────────────────────────
 # Line follow  (weighted P + D; sensors fl … fr)
@@ -64,22 +56,22 @@ SENSOR_WEIGHTS = [-2, -1, 0, 1, 2]  # +error → line right → turn right
 # ──────────────────────────────────────────────────────────────────────────
 PHASE_FOLLOW         = 0
 PHASE_JUNCTION_ALIGN = 1
-PHASE_JUNCTION_TURN  = 2
+PHASE_JUNCTION_SEARCH = 2
 PHASE_PAUSE          = 3
 
 PHASE_LABELS = {
     PHASE_FOLLOW:         'FOLLOW',
     PHASE_JUNCTION_ALIGN: 'ALIGN',
-    PHASE_JUNCTION_TURN:  'TURN',
+    PHASE_JUNCTION_SEARCH: 'SEARCH',
     PHASE_PAUSE:          'PAUSE',
 }
 
 # ──────────────────────────────────────────────────────────────────────────
 # Junction
 # ──────────────────────────────────────────────────────────────────────────
-JUNCTION_PAUSE_AFTER_ALIGN  = 0.5   # s – stop after ALIGN, before TURN
-JUNCTION_PAUSE_AFTER_SEARCH = 0.5   # s – stop after TURN, before FOLLOW
-JUNCTION_COOLDOWN_SEARCH    = 0.5  # s – ignore centre [1,1,1] after turn starts
+JUNCTION_PAUSE_AFTER_ALIGN  = 0.5   # s – stop after ALIGN, before SEARCH
+JUNCTION_PAUSE_AFTER_SEARCH = 0.5   # s – stop after SEARCH, before FOLLOW
+JUNCTION_COOLDOWN_SEARCH    = 0.5   # s – ignore [1,1,1] at start of SEARCH
 JUNCTION_COOLDOWN_FORWARD   = 1.0   # s – ignore junction detect after follow resumes
 JUNCTION_MIN_STRAIGHT_BLACK = 4     # consecutive blacks (not e.g. [1,1,0,1,1])
 
@@ -108,14 +100,14 @@ class CrossHandler(Node):
 
         # --- State machine ---
         self.phase = PHASE_FOLLOW
-        self.turn_dir = None
+        self.search_dir = None        
 
         # --- Line-follow controller ---
         self.last_error = 0.0
         self.last_twist = Twist()
 
-        # --- Junction turn timing  ---
-        self.turn_search_allowed_after = 0.0
+        # --- SEARCH phase timing ---
+        self.search_line_allowed_after = 0.0
         self.junction_ignore_until = 0.0
         self._junction_cooldown_pending = False
 
@@ -142,7 +134,7 @@ class CrossHandler(Node):
         self.get_logger().info(
             f'Tuning: KP={KP} KD={KD} '
             f'LINEAR_FOLLOW={LINEAR_FOLLOW} LINEAR_ALIGN={LINEAR_ALIGN} '
-            f'ANGULAR_TURN={ANGULAR_TURN} '
+            f'ANGULAR_SEARCH={ANGULAR_SEARCH} '
             f'JUNCTION_PAUSE_AFTER_ALIGN={JUNCTION_PAUSE_AFTER_ALIGN}s '
             f'JUNCTION_PAUSE_AFTER_SEARCH={JUNCTION_PAUSE_AFTER_SEARCH}s '
             f'JUNCTION_COOLDOWN_SEARCH={JUNCTION_COOLDOWN_SEARCH}s '
@@ -160,7 +152,7 @@ class CrossHandler(Node):
     ) -> None:
         """Begin a timed full stop, then resume at ``next_phase``.
 
-        Used after ALIGN (before TURN) and after TURN (before FOLLOW).
+        Used after ALIGN (before SEARCH) and after SEARCH (before FOLLOW).
         Zero ``cmd_vel`` is published immediately and on each sensor tick
         until ``pause_sec`` expires.
 
@@ -212,8 +204,8 @@ class CrossHandler(Node):
 
         self.get_logger().info(f'PAUSE done → {_state_label(self.phase)}')
 
-        if self.phase == PHASE_JUNCTION_TURN:
-            self._arm_junction_turn()
+        if self.phase == PHASE_JUNCTION_SEARCH:
+            self._arm_junction_search()
             return
 
         if self.phase == PHASE_FOLLOW and self._junction_cooldown_pending:
@@ -226,16 +218,17 @@ class CrossHandler(Node):
                 f'(no re-detect)'
             )
 
-    def _arm_junction_turn(self) -> None:
-        self.turn_search_allowed_after = (
+    def _arm_junction_search(self) -> None:
+        """Start SEARCH: spin in place; defer line-acquire until cooldown elapses."""
+        self.search_line_allowed_after = (
             time.monotonic() + JUNCTION_COOLDOWN_SEARCH
         )
-        ang = ANGULAR_TURN if self.turn_dir == 'left' else -ANGULAR_TURN
+        ang = ANGULAR_SEARCH if self.search_dir == 'left' else -ANGULAR_SEARCH
         twist = Twist()
         twist.angular.z = ang
         self._publish(twist)
         self.get_logger().info(
-            f'  junction turn [{self.turn_dir}] @ {ang:+.1f} rad/s '
+            f'  SEARCH [{self.search_dir}] @ {ang:+.1f} rad/s '
             f'(ignore [1,1,1] for {JUNCTION_COOLDOWN_SEARCH}s)'
         )
 
@@ -256,7 +249,7 @@ class CrossHandler(Node):
 
         twist = Twist()
 
-        # PHASE 0: Proportional line following
+        # ── FOLLOW: proportional line tracking ─────────────────────────────── #
         if self.phase == PHASE_FOLLOW:
 
             # Junction: 4+ in a row; skip briefly after completing a turn
@@ -269,11 +262,12 @@ class CrossHandler(Node):
 
             if junction:
                 self.last_twist = Twist()
-                self.turn_dir = random.choice(['right'])
+                self.search_dir = random.choice(['right'])
                 self.phase = PHASE_JUNCTION_ALIGN
                 self.get_logger().info(
-                    f'JUNCTION detected straight_black={straight_black} '
-                    f'→ ALIGN (will turn {self.turn_dir})')
+                    f'JUNCTION straight_black={straight_black} '
+                    f'→ ALIGN (will search {self.search_dir})'
+                )
                 twist.linear.x = LINEAR_ALIGN
                 twist.angular.z = 0.0
                 self._publish(twist)
@@ -305,7 +299,7 @@ class CrossHandler(Node):
             
             return
 
-        # ── PHASE 1: Junction align – creep straight through horizontal bar ─ #
+        # ── ALIGN: creep straight through cross bar ──────────────────────── #
         if self.phase == PHASE_JUNCTION_ALIGN:
 
             # Exit condition: outer sensors have cleared the bar AND
@@ -314,12 +308,12 @@ class CrossHandler(Node):
 
             if cleared:
                 self.get_logger().info(
-                    f'Pivot over centre – junction turn next [{self.turn_dir}]'
+                    f'ALIGN done → SEARCH next [{self.search_dir}]'
                 )
                 self._schedule_phase_pause(
-                    PHASE_JUNCTION_TURN,
+                    PHASE_JUNCTION_SEARCH,
                     pause_sec=JUNCTION_PAUSE_AFTER_ALIGN,
-                    label='junction turn',
+                    label='search',
                 )
             else:
                 # Still crossing the horizontal bar – creep straight
@@ -330,20 +324,19 @@ class CrossHandler(Node):
                     f'  aligning – sensors={s}  sum={total_black}')
             return
 
-        # ── PHASE 2: Junction turn – spin until centre trio (after cooldown) ─ #
-        if self.phase == PHASE_JUNCTION_TURN:
-            if self.turn_search_allowed_after == 0.0:
-                self._arm_junction_turn()
+        # ── SEARCH: rotate until new branch centred (after cooldown) ───────── #
+        if self.phase == PHASE_JUNCTION_SEARCH:
+            if self.search_line_allowed_after == 0.0:
+                self._arm_junction_search()
 
-            ang = ANGULAR_TURN if self.turn_dir == 'left' else -ANGULAR_TURN
-            #centre_trio_on_line = cl == 1 and c == 1 and cr == 1 and (fl == 0 and fr == 0)
-            centre_trio_on_line = cl == 1 and c == 1 and cr == 1 or (fl == 0 and fr == 0)
-            search_allowed = time.monotonic() >= self.turn_search_allowed_after
+            ang = ANGULAR_SEARCH if self.search_dir == 'left' else -ANGULAR_SEARCH
+            centre_trio_on_line = (cl == 1 and c == 1 and cr == 1) or (fl == 0 and fr == 0)
+            line_acquire_ok = time.monotonic() >= self.search_line_allowed_after
 
-            if centre_trio_on_line and search_allowed:
-                self.turn_search_allowed_after = 0.0
+            if centre_trio_on_line and line_acquire_ok:
+                self.search_line_allowed_after = 0.0
                 self.get_logger().info(
-                    'Centre trio [1,1,1] – line follow next'
+                    'SEARCH done – centre on line → FOLLOW'
                 )
                 self._junction_cooldown_pending = True
                 self._schedule_phase_pause(
@@ -356,14 +349,16 @@ class CrossHandler(Node):
             twist.linear.x = 0.0
             twist.angular.z = ang
             self._publish(twist)
-            if not search_allowed:
-                remaining = self.turn_search_allowed_after - time.monotonic()
+            if not line_acquire_ok:
+                remaining = self.search_line_allowed_after - time.monotonic()
                 self.get_logger().info(
-                    f'  turn [{self.turn_dir}]  ignore line '
-                    f'{remaining:.2f}s left')
+                    f'  SEARCH [{self.search_dir}]  ignore line '
+                    f'{remaining:.2f}s left'
+                )
             else:
                 self.get_logger().info(
-                    f'  turn [{self.turn_dir}]  centre={s[1:4]}  sensors={s}')
+                    f'  SEARCH [{self.search_dir}]  centre={s[1:4]}  sensors={s}'
+                )
             return
         
     def _publish(self, twist: Twist):
