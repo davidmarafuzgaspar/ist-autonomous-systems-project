@@ -94,10 +94,11 @@ JUNCTION_MIN_STRAIGHT_BLACK = 4     # consecutive blacks (not e.g. [1,1,0,1,1])
 MAP: list[list[int]] = [
     [0, 1, 0],
     [0, 0, 0],
+    [1, 0, 0],
 ]
 START: tuple[int, int] = (0, 0)       # (row, col)
 START_HEADING: str = "N"              # N | E | S | W
-GOAL: tuple[int, int] = (1, 2)        # (row, col)
+GOAL: tuple[int, int] = (2, 2)        # (row, col)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Debug logging
