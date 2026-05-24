@@ -49,7 +49,7 @@ ACTION_GLYPHS = {
     ACTION_STRAIGHT: "S",
     ACTION_TURN_RIGHT: "R",
     ACTION_TURN_LEFT: "L",
-    ACTION_TURN_AROUND: "U",
+    ACTION_TURN_AROUND: "A",
 }
 
 
@@ -208,11 +208,6 @@ class Solver:
         rows = len(self.world._grid)
         cols = len(self.world._grid[0]) if rows else 0
         lines: list[str] = []
-        lines.append("=== solver policy report ===")
-        lines.append(
-            f"start=({self.start_row},{self.start_col},{self.start_heading.name}) goal={self.goal}"
-        )
-        lines.append("")
         lines.append("Per-heading action map (S=straight, R=right, L=left, U=u-turn, #=obstacle):")
         for heading in Heading:
             lines.append(f"heading {heading.name}:")
@@ -226,22 +221,7 @@ class Solver:
                     cells.append(ACTION_GLYPHS[action])
                 lines.append("  " + " ".join(cells))
             lines.append("")
-
-        lines.append("Per-cell orientation policy:")
-        for row in range(rows):
-            for col in range(cols):
-                if not self.world.is_traversable(row, col):
-                    continue
-                decisions: list[str] = []
-                for heading in Heading:
-                    action = self._best_action(row, col, heading)
-                    next_heading = self._next_heading_for_action(heading, action)
-                    decisions.append(
-                        f"{heading.name}->{ACTION_LABELS[action]}(next {next_heading.name})"
-                    )
-                lines.append(f"  cell ({row},{col}): " + " | ".join(decisions))
-        lines.append("============================")
-        return "\n".join(lines)
+        return "\n".join(lines).rstrip()
 
     def explain_action(self, row: int, col: int, heading: Heading) -> str:
         valid_actions = self.world.get_valid_actions(row, col, heading)

@@ -169,7 +169,7 @@ class GridWorld:
         return "right"
 
     def format_map(self) -> str:
-        lines = ["--- map (row 0 = north) ---"]
+        lines = ["----------- Map -----------"]
         for row in range(self._rows):
             cells: list[str] = []
             for col in range(self._cols):

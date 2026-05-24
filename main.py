@@ -72,11 +72,11 @@ PHASE_PAUSE             = 3
 PHASE_GOAL              = 4
 
 PHASE_LABELS = {
-    PHASE_FOLLOW:         'FOLLOW',
-    PHASE_JUNCTION_ALIGN: 'ALIGN',
-    PHASE_JUNCTION_SEARCH: 'SEARCH',
-    PHASE_PAUSE:          'PAUSE',
-    PHASE_GOAL:           'GOAL',
+    PHASE_FOLLOW:           'FOLLOW',
+    PHASE_JUNCTION_ALIGN:   'ALIGN',
+    PHASE_JUNCTION_SEARCH:  'SEARCH',
+    PHASE_PAUSE:            'PAUSE',
+    PHASE_GOAL:             'GOAL',
 }
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -190,8 +190,8 @@ class CrossHandler(Node):
         # --- Logger Information ---
         self.get_logger().info('AlphaBot2 cross handler ready (line follow + junctions)')
         self.get_logger().info(f'Grid pose: {self.world.pose_str()}  goal={GOAL}')
-        self._log_map()
         self._log_solver_report()
+        self._log_map()
         if self.world.is_at_goal():
             self._handle_goal_reached()
             return
@@ -225,10 +225,6 @@ class CrossHandler(Node):
         self._turn_around_second_leg_pending = False
         self.search_dir = action
         self.phase = PHASE_JUNCTION_SEARCH
-        self.get_logger().info(
-            "Startup policy: turning in place at initial cell -> "
-            f"{self.solver.explain_action(self.world.row, self.world.col, self.world.heading)}"
-        )
         self._arm_junction_search()
         return True
 
@@ -403,9 +399,6 @@ class CrossHandler(Node):
                 )
                 self.search_dir = action
                 self._turn_around_second_leg_pending = False
-                self.get_logger().info(
-                    f"Solver decision: {self.solver.explain_action(self.world.row, self.world.col, self.world.heading)}"
-                )
                 if action == ACTION_STRAIGHT:
                     self.get_logger().error(
                         f'Grid: cannot advance from {self.world.pose_str()} '
@@ -430,9 +423,6 @@ class CrossHandler(Node):
                 )
                 self.search_dir = action
                 self._turn_around_second_leg_pending = False
-                self.get_logger().info(
-                    f"Solver decision: {self.solver.explain_action(self.world.row, self.world.col, self.world.heading)}"
-                )
             self.phase = PHASE_JUNCTION_ALIGN
             self._log_control(
                 f'JUNCTION straight_black={straight_black} '
