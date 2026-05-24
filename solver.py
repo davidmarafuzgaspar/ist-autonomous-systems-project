@@ -32,7 +32,7 @@ ACTION_TURN_LEFT = TURN_LEFT
 ACTION_TURN_AROUND = TURN_AROUND
 
 GOAL_REWARD = 100.0
-ILLEGAL_MOVE_REWARD = -10.0
+ILLEGAL_MOVE_REWARD = -20.0
 ACTION_REWARDS = {
     ACTION_STRAIGHT: -1.0,
     ACTION_TURN_RIGHT: -3.0,
@@ -128,7 +128,7 @@ class Solver:
     def train(
         self,
         log_fn: Callable[[str], None] | None = None,
-        log_interval: int = 500,
+        log_interval: int = 50,
     ) -> None:
         def emit(message: str) -> None:
             if log_fn is not None:
@@ -208,7 +208,7 @@ class Solver:
         rows = len(self.world._grid)
         cols = len(self.world._grid[0]) if rows else 0
         lines: list[str] = []
-        lines.append("Per-heading action map (S=straight, R=right, L=left, U=u-turn, #=obstacle):")
+        lines.append("Per-heading action map (S=straight, R=right, L=left, A=around, #=obstacle):")
         for heading in Heading:
             lines.append(f"heading {heading.name}:")
             for row in range(rows):
