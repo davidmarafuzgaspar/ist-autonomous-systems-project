@@ -92,12 +92,12 @@ JUNCTION_MIN_STRAIGHT_BLACK = 4     # consecutive blacks (not e.g. [1,1,0,1,1])
 # Grid world  (0 = intersection, 1 = obstacle; row 0 = north)
 # ──────────────────────────────────────────────────────────────────────────
 MAP: list[list[int]] = [
-    [0, 1],
-    [0, 0],
+    [0, 1, 0],
+    [0, 0, 0],
 ]
 START: tuple[int, int] = (0, 0)       # (row, col)
-START_HEADING: str = "E"              # N | E | S | W
-GOAL: tuple[int, int] = (1, 1)        # (row, col)
+START_HEADING: str = "N"              # N | E | S | W
+GOAL: tuple[int, int] = (1, 2)        # (row, col)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Debug logging
@@ -161,6 +161,7 @@ class CrossHandler(Node):
         self.search_line_allowed_after = 0.0
         self.junction_ignore_until = 0.0
         self._junction_cooldown_pending = False
+        self._turn_around_second_leg_pending = False
 
         # --- Inter-phase pause ---
         self.pause_until = 0.0
@@ -220,6 +221,7 @@ class CrossHandler(Node):
         if action == ACTION_STRAIGHT:
             return False
 
+        self._turn_around_second_leg_pending = False
         self.search_dir = action
         self.phase = PHASE_JUNCTION_SEARCH
         self.get_logger().info(
@@ -331,6 +333,7 @@ class CrossHandler(Node):
     def _arm_junction_search(self) -> None:
         """Start SEARCH: spin in place; defer line-acquire until cooldown elapses."""
         if self.search_dir == ACTION_STRAIGHT:
+            self._turn_around_second_leg_pending = False
             self.search_line_allowed_after = 0.0
             self._log_control('  SEARCH [straight] -> no rotation, resume FOLLOW')
             self._junction_cooldown_pending = True
@@ -398,6 +401,7 @@ class CrossHandler(Node):
                     self.world.row, self.world.col, self.world.heading
                 )
                 self.search_dir = action
+                self._turn_around_second_leg_pending = False
                 self.get_logger().info(
                     f"Solver decision: {self.solver.explain_action(self.world.row, self.world.col, self.world.heading)}"
                 )
@@ -424,6 +428,7 @@ class CrossHandler(Node):
                     self.world.row, self.world.col, self.world.heading
                 )
                 self.search_dir = action
+                self._turn_around_second_leg_pending = False
                 self.get_logger().info(
                     f"Solver decision: {self.solver.explain_action(self.world.row, self.world.col, self.world.heading)}"
                 )
@@ -503,12 +508,27 @@ class CrossHandler(Node):
 
         if centre_trio_on_line and line_acquire_ok:
             self.search_line_allowed_after = 0.0
+            if self.search_dir == ACTION_TURN_AROUND and not self._turn_around_second_leg_pending:
+                self.world.turn_right()
+                self._turn_around_second_leg_pending = True
+                self._log_map()
+                self._log_control(
+                    f'SEARCH turn-around leg 1 done → pause then leg 2  {self.world.pose_str()}'
+                )
+                self._schedule_phase_pause(
+                    PHASE_JUNCTION_SEARCH,
+                    pause_sec=JUNCTION_PAUSE_AFTER_SEARCH,
+                    label='search turn-around leg 2',
+                )
+                return
+
             if self.search_dir == ACTION_TURN_RIGHT:
                 self.world.turn_right()
             elif self.search_dir == ACTION_TURN_LEFT:
                 self.world.turn_left()
             elif self.search_dir == ACTION_TURN_AROUND:
-                self.world.turn_around()
+                self.world.turn_right()
+                self._turn_around_second_leg_pending = False
             self._log_map()
             self._log_control(
                 f'SEARCH done – on line → FOLLOW  {self.world.pose_str()}'
