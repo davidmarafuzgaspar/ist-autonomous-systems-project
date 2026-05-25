@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Q-learning solver for intersection-level AlphaBot2 navigation."""
+"""Model-free and model-based solvers for AlphaBot2 grid navigation."""
 
 from __future__ import annotations
 
 import random
 from collections.abc import Callable
+from typing import Literal
 
 import numpy as np
 
@@ -22,17 +23,30 @@ ALPHA = 0.2
 GAMMA = 0.85
 EPSILON_START = 1.0
 EPSILON_END = 0.05
-EPSILON_DECAY = 0.995
-NUM_EPISODES = 1000
+EPSILON_DECAY = 0.999
+NUM_EPISODES = 10000
 MAX_STEPS = 200
+VALUE_ITER_MAX_ITERS = 200
+VALUE_ITER_TOL = 1e-6
 
 ACTION_STRAIGHT = STRAIGHT
 ACTION_TURN_RIGHT = TURN_RIGHT
 ACTION_TURN_LEFT = TURN_LEFT
 ACTION_TURN_AROUND = TURN_AROUND
 
+ALL_ACTIONS = (
+    ACTION_STRAIGHT,
+    ACTION_TURN_RIGHT,
+    ACTION_TURN_LEFT,
+    ACTION_TURN_AROUND,
+)
+
+MODE_MODEL_FREE = "model_free"
+MODE_MODEL_BASED = "model_based"
+SOLVER_MODES = (MODE_MODEL_FREE, MODE_MODEL_BASED)
+
 GOAL_REWARD = 100.0
-ILLEGAL_MOVE_REWARD = -20.0
+ILLEGAL_MOVE_REWARD = -50.0
 ACTION_REWARDS = {
     ACTION_STRAIGHT: -1.0,
     ACTION_TURN_RIGHT: -3.0,
@@ -49,7 +63,7 @@ ACTION_GLYPHS = {
     ACTION_STRAIGHT: "S",
     ACTION_TURN_RIGHT: "R",
     ACTION_TURN_LEFT: "L",
-    ACTION_TURN_AROUND: "A",
+    ACTION_TURN_AROUND: "U",
 }
 
 
@@ -64,6 +78,9 @@ class Solver:
         epsilon_decay: float = EPSILON_DECAY,
         num_episodes: int = NUM_EPISODES,
         max_steps: int = MAX_STEPS,
+        mode: Literal["model_free", "model_based"] = MODE_MODEL_FREE,
+        value_iter_max_iters: int = VALUE_ITER_MAX_ITERS,
+        value_iter_tol: float = VALUE_ITER_TOL,
     ) -> None:
         self.world = world
         self.alpha = alpha
@@ -73,6 +90,9 @@ class Solver:
         self.epsilon_decay = epsilon_decay
         self.num_episodes = num_episodes
         self.max_steps = max_steps
+        self.mode = mode
+        self.value_iter_max_iters = value_iter_max_iters
+        self.value_iter_tol = value_iter_tol
 
         self.start_row = world.row
         self.start_col = world.col
@@ -81,7 +101,16 @@ class Solver:
 
         rows = len(world._grid)
         cols = len(world._grid[0]) if rows else 0
+        self.rows = rows
+        self.cols = cols
         self.q_table = np.zeros((rows, cols, 4, 4), dtype=np.float64)
+        self.values = np.zeros((rows, cols, 4), dtype=np.float64)
+        self.policy = np.zeros((rows, cols, 4), dtype=np.int8)
+        # Model-free starts with unknown occupancy and discovers obstacles by failures.
+        self.learned_obstacles = np.zeros((rows, cols), dtype=np.bool_)
+
+        if self.mode not in SOLVER_MODES:
+            raise ValueError(f"Unsupported solver mode {self.mode!r}; use {SOLVER_MODES}")
 
     def _simulate_step(
         self,
@@ -101,6 +130,9 @@ class Solver:
         dr, dc = HEADING_DELTA[next_heading]
         next_row, next_col = row + dr, col + dc
         if not self.world.is_traversable(next_row, next_col):
+            if self.mode == MODE_MODEL_FREE and self._in_bounds(next_row, next_col):
+                self.learned_obstacles[next_row, next_col] = True
+            # Illegal moves are explicitly part of learning: penalty + self-loop.
             return row, col, heading, ILLEGAL_MOVE_REWARD, False
 
         done = self.goal is not None and (next_row, next_col) == self.goal
@@ -109,21 +141,30 @@ class Solver:
 
         return next_row, next_col, next_heading, ACTION_REWARDS[action], False
 
-    def _next_heading_for_action(self, heading: Heading, action: int) -> Heading:
-        if action == ACTION_TURN_RIGHT:
-            return heading.turn_right()
-        if action == ACTION_TURN_LEFT:
-            return heading.turn_left()
-        if action == ACTION_TURN_AROUND:
-            return heading.turn_right().turn_right()
-        return heading
+    def _in_bounds(self, row: int, col: int) -> bool:
+        return 0 <= row < self.rows and 0 <= col < self.cols
+
+    def _model_based_action_scores(self, row: int, col: int, heading: Heading) -> np.ndarray:
+        scores = np.zeros(4, dtype=np.float64)
+        for action in ALL_ACTIONS:
+            next_row, next_col, next_heading, reward, done = self._simulate_step(
+                row, col, heading, action
+            )
+            future = 0.0 if done else self.gamma * self.values[next_row, next_col, next_heading.value]
+            scores[action] = reward + future
+        return scores
 
     def _best_action(self, row: int, col: int, heading: Heading) -> int:
-        valid_actions = self.world.get_valid_actions(row, col, heading)
-        if not valid_actions:
+        if not self._in_bounds(row, col):
             return ACTION_STRAIGHT
-        state_qs = self.q_table[row, col, heading.value, valid_actions]
-        return valid_actions[int(np.argmax(state_qs))]
+        if self.mode == MODE_MODEL_BASED:
+            if not self.world.is_traversable(row, col):
+                return ACTION_STRAIGHT
+            return int(self.policy[row, col, heading.value])
+        if self.learned_obstacles[row, col]:
+            return ACTION_STRAIGHT
+        state_qs = self.q_table[row, col, heading.value, :]
+        return int(np.argmax(state_qs))
 
     def train(
         self,
@@ -136,6 +177,18 @@ class Solver:
             else:
                 print(message)
 
+        emit(f"[solver] mode={self.mode}")
+        if self.mode == MODE_MODEL_BASED:
+            self._train_model_based(emit, log_interval)
+            return
+        self._train_model_free(emit, log_interval)
+
+    def _train_model_free(
+        self,
+        emit: Callable[[str], None],
+        log_interval: int,
+    ) -> None:
+        self.learned_obstacles.fill(False)
         emit(
             f"[solver] training start episodes={self.num_episodes} max_steps={self.max_steps} "
             f"alpha={self.alpha} gamma={self.gamma} "
@@ -151,24 +204,24 @@ class Solver:
             episode_reward = 0.0
             solved = False
             for step in range(self.max_steps):
-                valid_actions = self.world.get_valid_actions(row, col, heading)
-                if not valid_actions:
-                    break
-
                 if random.random() < epsilon:
-                    action = random.choice(valid_actions)
+                    action = random.choice(ALL_ACTIONS)
                 else:
-                    state_qs = self.q_table[row, col, heading.value, valid_actions]
-                    action = valid_actions[int(np.argmax(state_qs))]
+                    state_qs = self.q_table[row, col, heading.value, :]
+                    action = int(np.argmax(state_qs))
 
                 next_row, next_col, next_heading, reward, done = self._simulate_step(
                     row, col, heading, action
                 )
 
-                best_next = np.max(self.q_table[next_row, next_col, next_heading.value, :])
                 current_q = self.q_table[row, col, heading.value, action]
+                if done:
+                    target = reward
+                else:
+                    best_next = np.max(self.q_table[next_row, next_col, next_heading.value, :])
+                    target = reward + self.gamma * best_next
                 self.q_table[row, col, heading.value, action] = current_q + self.alpha * (
-                    reward + self.gamma * best_next - current_q
+                    target - current_q
                 )
 
                 episode_reward += reward
@@ -199,22 +252,74 @@ class Solver:
                 running_steps = 0
                 success_count = 0
                 window_episodes = 0
+        for line in self.format_learned_map_report().splitlines():
+            emit(line)
+        emit("[solver] training complete")
+
+    def _train_model_based(
+        self,
+        emit: Callable[[str], None],
+        log_interval: int,
+    ) -> None:
+        rows, cols, _ = self.values.shape
+        emit(
+            f"[solver] value-iteration start max_iters={self.value_iter_max_iters} "
+            f"tol={self.value_iter_tol} gamma={self.gamma}"
+        )
+        for iteration in range(self.value_iter_max_iters):
+            delta = 0.0
+            new_values = self.values.copy()
+            for row in range(rows):
+                for col in range(cols):
+                    if not self.world.is_traversable(row, col):
+                        continue
+                    for heading in Heading:
+                        if self.goal is not None and (row, col) == self.goal:
+                            new_values[row, col, heading.value] = 0.0
+                            self.policy[row, col, heading.value] = ACTION_STRAIGHT
+                            continue
+
+                        action_scores = self._model_based_action_scores(row, col, heading)
+                        best_action = int(np.argmax(action_scores))
+                        best_value = float(action_scores[best_action])
+                        old_value = self.values[row, col, heading.value]
+                        new_values[row, col, heading.value] = best_value
+                        self.policy[row, col, heading.value] = best_action
+                        delta = max(delta, abs(best_value - old_value))
+            self.values = new_values
+
+            if ((iteration + 1) % max(1, log_interval) == 0) or (
+                iteration + 1 == self.value_iter_max_iters
+            ):
+                emit(
+                    f"[solver] value-iteration iter={iteration + 1}/{self.value_iter_max_iters} "
+                    f"delta={delta:.6f}"
+                )
+            if delta < self.value_iter_tol:
+                emit(
+                    f"[solver] value-iteration converged iter={iteration + 1} "
+                    f"delta={delta:.6f}"
+                )
+                break
         emit("[solver] training complete")
 
     def get_action(self, row: int, col: int, heading: Heading) -> int:
         return self._best_action(row, col, heading)
 
     def format_policy_report(self) -> str:
-        rows = len(self.world._grid)
-        cols = len(self.world._grid[0]) if rows else 0
         lines: list[str] = []
-        lines.append("Per-heading action map (S=straight, R=right, L=left, A=around, #=obstacle):")
+        lines.append("Per-heading action map (S=straight, R=right, L=left, U=u-turn, #=obstacle):")
         for heading in Heading:
             lines.append(f"heading {heading.name}:")
-            for row in range(rows):
+            for row in range(self.rows):
                 cells: list[str] = []
-                for col in range(cols):
-                    if not self.world.is_traversable(row, col):
+                for col in range(self.cols):
+                    is_obstacle = (
+                        self.learned_obstacles[row, col]
+                        if self.mode == MODE_MODEL_FREE
+                        else not self.world.is_traversable(row, col)
+                    )
+                    if is_obstacle:
                         cells.append("#")
                         continue
                     action = self._best_action(row, col, heading)
@@ -223,15 +328,41 @@ class Solver:
             lines.append("")
         return "\n".join(lines).rstrip()
 
-    def explain_action(self, row: int, col: int, heading: Heading) -> str:
-        valid_actions = self.world.get_valid_actions(row, col, heading)
-        if not valid_actions:
-            return f"state ({row},{col},{heading.name}) no valid actions"
-        chosen_action = self._best_action(row, col, heading)
-        scored_actions = ", ".join(
-            f"{ACTION_LABELS[action]}={self.q_table[row, col, heading.value, action]:.2f}"
-            for action in valid_actions
+    def format_learned_map_report(self) -> str:
+        lines: list[str] = []
+        lines.append(
+            "Learned map (##=obstacle, ..=free/unknown, R*=start pose, GG=goal):"
         )
+        for row in range(self.rows):
+            cells: list[str] = []
+            for col in range(self.cols):
+                if row == self.start_row and col == self.start_col:
+                    cells.append(f"R{self.start_heading.name}")
+                elif self.goal is not None and (row, col) == self.goal:
+                    cells.append("GG")
+                elif self.learned_obstacles[row, col]:
+                    cells.append("##")
+                else:
+                    cells.append("..")
+            lines.append("  " + "  ".join(cells))
+        lines.append(
+            f"start=({self.start_row},{self.start_col},{self.start_heading.name}) "
+            f"goal={self.goal}"
+        )
+        return "\n".join(lines)
+
+    def explain_action(self, row: int, col: int, heading: Heading) -> str:
+        chosen_action = self.get_action(row, col, heading)
+        if self.mode == MODE_MODEL_BASED:
+            action_scores = self._model_based_action_scores(row, col, heading)
+            scored_actions = ", ".join(
+                f"{ACTION_LABELS[action]}={action_scores[action]:.2f}" for action in ALL_ACTIONS
+            )
+        else:
+            scored_actions = ", ".join(
+                f"{ACTION_LABELS[action]}={self.q_table[row, col, heading.value, action]:.2f}"
+                for action in ALL_ACTIONS
+            )
         return (
             f"state ({row},{col},{heading.name}) -> {ACTION_LABELS[chosen_action]} "
             f"from [{scored_actions}]"

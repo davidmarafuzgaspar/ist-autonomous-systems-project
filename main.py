@@ -39,6 +39,8 @@ from solver import (
     ACTION_TURN_AROUND,
     ACTION_TURN_LEFT,
     ACTION_TURN_RIGHT,
+    MODE_MODEL_BASED,
+    MODE_MODEL_FREE,
     Solver,
 )
 from world import GridWorld
@@ -99,6 +101,13 @@ MAP: list[list[int]] = [
 START: tuple[int, int] = (0, 0)       # (row, col)
 START_HEADING: str = "N"              # N | E | S | W
 GOAL: tuple[int, int] = (2, 2)        # (row, col)
+
+# ──────────────────────────────────────────────────────────────────────────
+# Solver mode
+# ──────────────────────────────────────────────────────────────────────────
+# Use MODE_MODEL_FREE (unknown-map obstacle discovery) or MODE_MODEL_BASED.
+SOLVER_MODE = MODE_MODEL_FREE
+#SOLVER_MODE = MODE_MODEL_BASED
 
 # ──────────────────────────────────────────────────────────────────────────
 # Debug logging
@@ -171,7 +180,7 @@ class CrossHandler(Node):
 
         # --- Discrete grid pose (intersections) ---
         self.world = GridWorld.from_matrix(MAP, START, START_HEADING, GOAL)
-        self.solver = Solver(self.world)
+        self.solver = Solver(self.world, mode=SOLVER_MODE)
         self.solver.train(log_fn=self.get_logger().info)
 
         # --- ROS Controller Interfaces ---
