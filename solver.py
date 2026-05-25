@@ -24,7 +24,7 @@ GAMMA = 0.85
 EPSILON_START = 1.0
 EPSILON_END = 0.05
 EPSILON_DECAY = 0.999
-NUM_EPISODES = 10000
+NUM_EPISODES = 5000
 MAX_STEPS = 200
 VALUE_ITER_MAX_ITERS = 200
 VALUE_ITER_TOL = 1e-6
@@ -63,7 +63,7 @@ ACTION_GLYPHS = {
     ACTION_STRAIGHT: "S",
     ACTION_TURN_RIGHT: "R",
     ACTION_TURN_LEFT: "L",
-    ACTION_TURN_AROUND: "U",
+    ACTION_TURN_AROUND: "A",
 }
 
 
@@ -308,9 +308,9 @@ class Solver:
 
     def format_policy_report(self) -> str:
         lines: list[str] = []
-        lines.append("Per-heading action map (S=straight, R=right, L=left, U=u-turn, #=obstacle):")
+        lines.append("Per-heading action map (S=Straight, R=Right, L=Left, A=Around, #=Obstacle):")
         for heading in Heading:
-            lines.append(f"heading {heading.name}:")
+            lines.append(f"Heading {heading.name}:")
             for row in range(self.rows):
                 cells: list[str] = []
                 for col in range(self.cols):

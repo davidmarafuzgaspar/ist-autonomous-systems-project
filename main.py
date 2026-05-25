@@ -94,13 +94,15 @@ JUNCTION_MIN_STRAIGHT_BLACK = 4     # consecutive blacks (not e.g. [1,1,0,1,1])
 # Grid world  (0 = intersection, 1 = obstacle; row 0 = north)
 # ──────────────────────────────────────────────────────────────────────────
 MAP: list[list[int]] = [
-    [0, 1, 0],
-    [0, 0, 0],
-    [1, 0, 0],
+    [0, 1, 0, 0, 0],
+    [0, 1, 0, 1, 0],
+    [0, 0, 0, 1, 0],
+    [0, 1, 0, 1, 0],
+    [0, 0, 1, 0, 0],
 ]
 START: tuple[int, int] = (0, 0)       # (row, col)
 START_HEADING: str = "N"              # N | E | S | W
-GOAL: tuple[int, int] = (2, 2)        # (row, col)
+GOAL: tuple[int, int] = (4, 4)        # (row, col)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Solver mode
@@ -113,7 +115,7 @@ SOLVER_MODE = MODE_MODEL_FREE
 # Debug logging
 # ──────────────────────────────────────────────────────────────────────────
 PRINT_MAP = True                      # ASCII grid after startup / junction / align
-PRINT_CONTROL_LOGS = False             # per-tick sensors, phases, CMD, P+D detail
+PRINT_CONTROL_LOGS = False            # per-tick sensors, phases, CMD, P+D detail
 
 
 class LineSensors(NamedTuple):
