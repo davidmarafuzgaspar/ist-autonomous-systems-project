@@ -109,6 +109,14 @@ class GridWorld:
     def heading(self) -> Heading:
         return self._heading
 
+    @property
+    def rows(self) -> int:
+        return self._rows
+
+    @property
+    def cols(self) -> int:
+        return self._cols
+
     def pose_str(self) -> str:
         return f"({self._row},{self._col}) heading {self._heading.label()}"
 
@@ -125,6 +133,23 @@ class GridWorld:
         if not (0 <= row < self._rows and 0 <= col < self._cols):
             return False
         return self._grid[row][col] == FREE_CELL
+
+    def is_in_bounds(self, row: int, col: int) -> bool:
+        return 0 <= row < self._rows and 0 <= col < self._cols
+
+    def is_obstacle(self, row: int, col: int) -> bool:
+        return self.is_in_bounds(row, col) and self._grid[row][col] == OBSTACLE_CELL
+
+    def mark_obstacle(self, row: int, col: int) -> bool:
+        """Mark a cell as obstacle; returns True if map changed."""
+        if not self.is_in_bounds(row, col):
+            return False
+        if (row, col) == (self._row, self._col):
+            return False
+        if self._grid[row][col] == OBSTACLE_CELL:
+            return False
+        self._grid[row][col] = OBSTACLE_CELL
+        return True
 
     def step_to_next_intersection(self) -> bool:
         """Advance one cell along current heading (junction arrival)."""

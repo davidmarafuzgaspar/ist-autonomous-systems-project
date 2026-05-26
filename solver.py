@@ -23,9 +23,9 @@ ALPHA = 0.2
 GAMMA = 0.85
 EPSILON_START = 1.0
 EPSILON_END = 0.05
-EPSILON_DECAY = 0.999
-NUM_EPISODES = 5000
-MAX_STEPS = 200
+EPSILON_DECAY = 0.995
+NUM_EPISODES = 1000
+MAX_STEPS = 10
 VALUE_ITER_MAX_ITERS = 200
 VALUE_ITER_TOL = 1e-6
 
@@ -106,8 +106,6 @@ class Solver:
         self.q_table = np.zeros((rows, cols, 4, 4), dtype=np.float64)
         self.values = np.zeros((rows, cols, 4), dtype=np.float64)
         self.policy = np.zeros((rows, cols, 4), dtype=np.int8)
-        # Model-free starts with unknown occupancy and discovers obstacles by failures.
-        self.learned_obstacles = np.zeros((rows, cols), dtype=np.bool_)
 
         if self.mode not in SOLVER_MODES:
             raise ValueError(f"Unsupported solver mode {self.mode!r}; use {SOLVER_MODES}")
@@ -130,8 +128,6 @@ class Solver:
         dr, dc = HEADING_DELTA[next_heading]
         next_row, next_col = row + dr, col + dc
         if not self.world.is_traversable(next_row, next_col):
-            if self.mode == MODE_MODEL_FREE and self._in_bounds(next_row, next_col):
-                self.learned_obstacles[next_row, next_col] = True
             # Illegal moves are explicitly part of learning: penalty + self-loop.
             return row, col, heading, ILLEGAL_MOVE_REWARD, False
 
@@ -161,8 +157,6 @@ class Solver:
             if not self.world.is_traversable(row, col):
                 return ACTION_STRAIGHT
             return int(self.policy[row, col, heading.value])
-        if self.learned_obstacles[row, col]:
-            return ACTION_STRAIGHT
         state_qs = self.q_table[row, col, heading.value, :]
         return int(np.argmax(state_qs))
 
@@ -188,7 +182,6 @@ class Solver:
         emit: Callable[[str], None],
         log_interval: int,
     ) -> None:
-        self.learned_obstacles.fill(False)
         emit(
             f"[solver] training start episodes={self.num_episodes} max_steps={self.max_steps} "
             f"alpha={self.alpha} gamma={self.gamma} "
@@ -314,11 +307,7 @@ class Solver:
             for row in range(self.rows):
                 cells: list[str] = []
                 for col in range(self.cols):
-                    is_obstacle = (
-                        self.learned_obstacles[row, col]
-                        if self.mode == MODE_MODEL_FREE
-                        else not self.world.is_traversable(row, col)
-                    )
+                    is_obstacle = not self.world.is_traversable(row, col)
                     if is_obstacle:
                         cells.append("#")
                         continue
@@ -340,7 +329,7 @@ class Solver:
                     cells.append(f"R{self.start_heading.name}")
                 elif self.goal is not None and (row, col) == self.goal:
                     cells.append("GG")
-                elif self.learned_obstacles[row, col]:
+                elif self.world.is_obstacle(row, col):
                     cells.append("##")
                 else:
                     cells.append("..")
@@ -373,3 +362,54 @@ class Solver:
 
     def load(self, path: str) -> None:
         self.q_table = np.load(path)
+
+    def set_start_state(self, row: int, col: int, heading: Heading) -> None:
+        self.start_row = row
+        self.start_col = col
+        self.start_heading = heading
+
+    def update_discovered_obstacle(self, row: int, col: int) -> bool:
+        return self.world.mark_obstacle(row, col)
+
+    def path_contains_cell(
+        self,
+        target_row: int,
+        target_col: int,
+        *,
+        start_row: int,
+        start_col: int,
+        start_heading: Heading,
+        horizon: int = 64,
+    ) -> bool:
+        row, col, heading = start_row, start_col, start_heading
+        seen_states: set[tuple[int, int, int]] = set()
+        for _ in range(horizon):
+            action = self.get_action(row, col, heading)
+            next_row, next_col, next_heading, _, done = self._simulate_step(
+                row, col, heading, action
+            )
+            if (next_row, next_col) == (target_row, target_col):
+                return True
+            state_key = (next_row, next_col, next_heading.value)
+            if state_key in seen_states:
+                return False
+            seen_states.add(state_key)
+            if done:
+                return False
+            # Self-loop means no planned progress.
+            if (next_row, next_col, next_heading) == (row, col, heading):
+                return False
+            row, col, heading = next_row, next_col, next_heading
+        return False
+
+    def replan_from_state(
+        self,
+        row: int,
+        col: int,
+        heading: Heading,
+        *,
+        log_fn: Callable[[str], None] | None = None,
+        log_interval: int = 50,
+    ) -> None:
+        self.set_start_state(row, col, heading)
+        self.train(log_fn=log_fn, log_interval=log_interval)

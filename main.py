@@ -33,6 +33,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Int32MultiArray
 from geometry_msgs.msg import Twist
+from alphabot2_interfaces.msg import Obstacle
 
 from solver import (
     ACTION_STRAIGHT,
@@ -43,7 +44,7 @@ from solver import (
     MODE_MODEL_FREE,
     Solver,
 )
-from world import GridWorld
+from world import FREE_CELL, HEADING_DELTA, GridWorld
 
 # ──────────────────────────────────────────────────────────────────────────
 # Sensors
@@ -94,15 +95,12 @@ JUNCTION_MIN_STRAIGHT_BLACK = 4     # consecutive blacks (not e.g. [1,1,0,1,1])
 # Grid world  (0 = intersection, 1 = obstacle; row 0 = north)
 # ──────────────────────────────────────────────────────────────────────────
 MAP: list[list[int]] = [
-    [0, 1, 0, 0, 0],
-    [0, 1, 0, 1, 0],
-    [0, 0, 0, 1, 0],
-    [0, 1, 0, 1, 0],
-    [0, 0, 1, 0, 0],
+    [0, 0],
+    [0, 0],
 ]
 START: tuple[int, int] = (0, 0)       # (row, col)
-START_HEADING: str = "N"              # N | E | S | W
-GOAL: tuple[int, int] = (4, 4)        # (row, col)
+START_HEADING: str = "W"         # N | E | S | W
+GOAL: tuple[int, int] = (1, 1)        # (row, col)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Solver mode
@@ -180,8 +178,14 @@ class CrossHandler(Node):
         self._after_pause_phase = PHASE_FOLLOW
         self._pending_twist_after_pause = None
 
+        # --- Obstacle sensing (sampled continuously, interpreted only at PAUSE completion) ---
+        self._left_obstacle = False
+        self._right_obstacle = False
+        self._have_obstacle_sample = False
+
         # --- Discrete grid pose (intersections) ---
-        self.world = GridWorld.from_matrix(MAP, START, START_HEADING, GOAL)
+        initial_map = self._build_initial_map_for_solver()
+        self.world = GridWorld.from_matrix(initial_map, START, START_HEADING, GOAL)
         self.solver = Solver(self.world, mode=SOLVER_MODE)
         self.solver.train(log_fn=self.get_logger().info)
 
@@ -195,6 +199,12 @@ class CrossHandler(Node):
             Int32MultiArray,
             '/alphabot2/line_sensors',
             self.sensor_callback,
+            10,
+        )
+        self.create_subscription(
+            Obstacle,
+            'alphabot2/obstacles',
+            self.obstacle_callback,
             10,
         )
 
@@ -220,6 +230,98 @@ class CrossHandler(Node):
             f'JUNCTION_COOLDOWN_SEARCH={JUNCTION_COOLDOWN_SEARCH}s '
             f'JUNCTION_COOLDOWN_FORWARD={JUNCTION_COOLDOWN_FORWARD}s '
         )
+
+    def _build_initial_map_for_solver(self) -> list[list[int]]:
+        """Model-free starts with unknown map: assume all cells are free."""
+        if SOLVER_MODE == MODE_MODEL_FREE:
+            return [[FREE_CELL for _ in row] for row in MAP]
+        return [list(row) for row in MAP]
+
+    def obstacle_callback(self, msg: Obstacle) -> None:
+        """Cache latest obstacle sample; interpretation is deferred to PAUSE completion."""
+        self._left_obstacle = bool(msg.left_obstacle)
+        self._right_obstacle = bool(msg.right_obstacle)
+        self._have_obstacle_sample = True
+
+    def _maybe_process_obstacle_sample(self) -> bool:
+        """Interpret obstacle info only after a movement action has completed.
+
+        Returns:
+            True when updated policy should be applied immediately via SEARCH.
+        """
+        if SOLVER_MODE != MODE_MODEL_FREE:
+            return False
+        self.get_logger().info(
+            'Obstacle check: evaluating IR obstacle sample after movement completion'
+        )
+        if not self._have_obstacle_sample:
+            self.get_logger().info('Obstacle check: no IR sample available yet')
+            return False
+        obstacle_ahead = self._left_obstacle or self._right_obstacle
+        if not obstacle_ahead:
+            self.get_logger().info('Obstacle check: no obstacle detected')
+            return False
+
+        self.get_logger().info(
+            f'Obstacle check: obstacle detected (left={self._left_obstacle}, right={self._right_obstacle})'
+        )
+        dr, dc = HEADING_DELTA[self.world.heading]
+        obstacle_row = self.world.row + dr
+        obstacle_col = self.world.col + dc
+        if not self.world.is_in_bounds(obstacle_row, obstacle_col):
+            self.get_logger().info(
+                f'Obstacle check: detected obstacle maps out of bounds -> ({obstacle_row},{obstacle_col})'
+            )
+            return False
+        if self.world.is_obstacle(obstacle_row, obstacle_col):
+            self.get_logger().info(
+                f'Obstacle check: cell ({obstacle_row},{obstacle_col}) already known obstacle'
+            )
+            return False
+
+        blocks_plan = self.solver.path_contains_cell(
+            obstacle_row,
+            obstacle_col,
+            start_row=self.world.row,
+            start_col=self.world.col,
+            start_heading=self.world.heading,
+        )
+        changed = self.solver.update_discovered_obstacle(obstacle_row, obstacle_col)
+        if not changed:
+            self.get_logger().info(
+                f'Obstacle check: could not update map for cell ({obstacle_row},{obstacle_col})'
+            )
+            return False
+
+        self.get_logger().info(
+            f'Discovered obstacle at ({obstacle_row},{obstacle_col}) while heading {self.world.heading.name}'
+        )
+        if blocks_plan:
+            self.get_logger().info('Obstacle blocks current planned path -> replanning')
+            self.solver.replan_from_state(
+                self.world.row,
+                self.world.col,
+                self.world.heading,
+                log_fn=self.get_logger().info,
+                log_interval=50,
+            )
+            self._log_solver_report()
+
+            action_now = self.solver.get_action(
+                self.world.row,
+                self.world.col,
+                self.world.heading,
+            )
+            if action_now != ACTION_STRAIGHT:
+                self.get_logger().info(
+                    f'Applying updated policy immediately -> SEARCH action {action_now}'
+                )
+                self.search_dir = action_now
+                self._turn_around_second_leg_pending = False
+                return True
+        else:
+            self.get_logger().info('Obstacle does not block current plan -> keep policy')
+        return False
 
     def _log_solver_report(self) -> None:
         """Emit a readable post-training policy summary."""
@@ -316,6 +418,9 @@ class CrossHandler(Node):
     def _complete_phase_pause(self) -> None:
         """Leave PHASE_PAUSE: advance phase and run transition hooks."""
         self.phase = self._after_pause_phase
+        apply_search_now = self._maybe_process_obstacle_sample()
+        if apply_search_now:
+            self.phase = PHASE_JUNCTION_SEARCH
 
         pending = self._pending_twist_after_pause
         if pending is not None:
