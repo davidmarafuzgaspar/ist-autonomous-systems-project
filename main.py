@@ -95,17 +95,18 @@ JUNCTION_MIN_STRAIGHT_BLACK = 4     # consecutive blacks (not e.g. [1,1,0,1,1])
 # Grid world  (0 = intersection, 1 = obstacle; row 0 = north)
 # ──────────────────────────────────────────────────────────────────────────
 MAP: list[list[int]] = [
-    [0, 0],
-    [0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
+    [0, 0, 0, 0],
 ]
 START: tuple[int, int] = (0, 0)       # (row, col)
-START_HEADING: str = "W"         # N | E | S | W
-GOAL: tuple[int, int] = (1, 1)        # (row, col)
+START_HEADING: str = "E"         # N | E | S | W
+GOAL: tuple[int, int] = (2, 3)        # (row, col)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Solver mode
 # ──────────────────────────────────────────────────────────────────────────
-# Use MODE_MODEL_FREE (unknown-map obstacle discovery) or MODE_MODEL_BASED.
+INITIAL_OBSTACLE_SAMPLE_TIMEOUT = 0.5
 SOLVER_MODE = MODE_MODEL_FREE
 #SOLVER_MODE = MODE_MODEL_BASED
 
@@ -182,12 +183,11 @@ class CrossHandler(Node):
         self._left_obstacle = False
         self._right_obstacle = False
         self._have_obstacle_sample = False
+        self.solver = None
 
         # --- Discrete grid pose (intersections) ---
         initial_map = self._build_initial_map_for_solver()
         self.world = GridWorld.from_matrix(initial_map, START, START_HEADING, GOAL)
-        self.solver = Solver(self.world, mode=SOLVER_MODE)
-        self.solver.train(log_fn=self.get_logger().info)
 
         # --- ROS Controller Interfaces ---
         self.pub = self.create_publisher(
@@ -196,15 +196,20 @@ class CrossHandler(Node):
             10,
         )
         self.create_subscription(
-            Int32MultiArray,
-            '/alphabot2/line_sensors',
-            self.sensor_callback,
-            10,
-        )
-        self.create_subscription(
             Obstacle,
             'alphabot2/obstacles',
             self.obstacle_callback,
+            10,
+        )
+        self._prime_initial_obstacle_map_from_ir()
+
+        self.solver = Solver(self.world, mode=SOLVER_MODE)
+        self.solver.train(log_fn=self.get_logger().info)
+
+        self.create_subscription(
+            Int32MultiArray,
+            '/alphabot2/line_sensors',
+            self.sensor_callback,
             10,
         )
 
@@ -242,6 +247,39 @@ class CrossHandler(Node):
         self._left_obstacle = bool(msg.left_obstacle)
         self._right_obstacle = bool(msg.right_obstacle)
         self._have_obstacle_sample = True
+
+    def _prime_initial_obstacle_map_from_ir(self) -> None:
+        """Before solver training, check obstacle ahead from initial heading."""
+        if SOLVER_MODE != MODE_MODEL_FREE:
+            return
+        deadline = time.monotonic() + INITIAL_OBSTACLE_SAMPLE_TIMEOUT
+        while not self._have_obstacle_sample and time.monotonic() < deadline:
+            rclpy.spin_once(self, timeout_sec=0.05)
+        if not self._have_obstacle_sample:
+            self.get_logger().info('Initial obstacle check: no IR sample before solver training')
+            return
+        if not (self._left_obstacle or self._right_obstacle):
+            self.get_logger().info('Initial obstacle check: no obstacle ahead in initial heading')
+            return
+
+        dr, dc = HEADING_DELTA[self.world.heading]
+        obstacle_row = self.world.row + dr
+        obstacle_col = self.world.col + dc
+        if not self.world.is_in_bounds(obstacle_row, obstacle_col):
+            self.get_logger().info(
+                f'Initial obstacle check: obstacle maps out of bounds -> ({obstacle_row},{obstacle_col})'
+            )
+            return
+        changed = self.world.mark_obstacle(obstacle_row, obstacle_col)
+        if changed:
+            self.get_logger().info(
+                f'Initial obstacle check: marked obstacle at ({obstacle_row},{obstacle_col}) '
+                f'from heading {self.world.heading.name}'
+            )
+        else:
+            self.get_logger().info(
+                f'Initial obstacle check: cell ({obstacle_row},{obstacle_col}) already blocked'
+            )
 
     def _maybe_process_obstacle_sample(self) -> bool:
         """Interpret obstacle info only after a movement action has completed.
