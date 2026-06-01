@@ -95,13 +95,13 @@ JUNCTION_MIN_STRAIGHT_BLACK = 4     # consecutive blacks (not e.g. [1,1,0,1,1])
 # Grid world  (0 = intersection, 1 = obstacle; row 0 = north)
 # ──────────────────────────────────────────────────────────────────────────
 MAP: list[list[int]] = [
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
 ]
 START: tuple[int, int] = (0, 0)       # (row, col)
-START_HEADING: str = "E"         # N | E | S | W
-GOAL: tuple[int, int] = (2, 3)        # (row, col)
+START_HEADING: str = "S"         # N | E | S | W
+GOAL: tuple[int, int] = (2, 4)        # (row, col)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Solver mode
@@ -197,7 +197,7 @@ class CrossHandler(Node):
         )
         self.create_subscription(
             Obstacle,
-            'alphabot2/obstacles',
+            '/alphabot2/ir_obstacles_sensors',
             self.obstacle_callback,
             10,
         )
@@ -208,7 +208,7 @@ class CrossHandler(Node):
 
         self.create_subscription(
             Int32MultiArray,
-            '/alphabot2/line_sensors',
+            '/alphabot2/ir_line_sensors',
             self.sensor_callback,
             10,
         )

@@ -18,7 +18,7 @@ CLOCK_PIN = 25     # Serial clock
 ADDRESS_PIN = 24   # Address input
 DATA_OUT_PIN = 23  # ADC serial data output
 
-LINE_SENSORS_TOPIC = "line_sensors"
+IR_LINE_SENSORS_TOPIC = "ir_line_sensors"
 SPIN_TIMER_PERIOD_SEC = 0.025  # Timer callback period
 ADC_PULSE_DELAY_SEC = 0.0001   # 100 us clock pulse delay
 
@@ -128,7 +128,7 @@ class LineSensors(Node):
 
         self.tlc1543 = TLC1543()
         self.timer = self.create_timer(SPIN_TIMER_PERIOD_SEC, self.line_sensors_pub_callback)
-        self.line_sensors_pub = self.create_publisher(Int32MultiArray, LINE_SENSORS_TOPIC, 10)
+        self.line_sensors_pub = self.create_publisher(Int32MultiArray, IR_LINE_SENSORS_TOPIC, 10)
         self.sensor_values = [0, 0, 0, 0, 0]
 
         self.get_logger().info("Node init complete.")

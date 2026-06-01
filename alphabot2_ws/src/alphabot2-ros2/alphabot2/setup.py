@@ -25,9 +25,10 @@ setup(
         'console_scripts': [
             'motion_driver = alphabot2.motion_driver:main',
             'IR_obstacle_sensors = alphabot2.IR_obstacle_sensors:main',
-            'virtual_odometer = alphabot2.virtual_odometer:main',
-            'QR_detector = alphabot2.QR_detector:main',
-            'line_sensors = alphabot2.line_sensors:main',
+            'IR_line_sensors = alphabot2.IR_line_sensors:main',
+            #'virtual_odometer = alphabot2.virtual_odometer:main',
+            #'QR_detector = alphabot2.QR_detector:main',
+            
         ],
     },
 )

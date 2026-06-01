@@ -15,7 +15,7 @@ Each sensor has one output that is LOW if there is an obstacle, HIGH otherwise (
 DL_PIN = 16  # L-sensor output pin
 DR_PIN = 19  # R-sensor output pin
 
-OBSTACLES_TOPIC = "obstacles"
+IR_OBSTACLES_TOPIC = "ir_obstacles_sensors"
 SPIN_TIMER_PERIOD_SEC = 0.025  # Timer callback period (40 Hz)
 
 
@@ -57,7 +57,7 @@ class IRObstacleSensors(Node):
         self.timer = self.create_timer(SPIN_TIMER_PERIOD_SEC, self.obstacles_pub_callback)
 
         # Topic publisher
-        self.obstacles_pub = self.create_publisher(Obstacle, OBSTACLES_TOPIC, 10)
+        self.obstacles_pub = self.create_publisher(Obstacle, IR_OBSTACLES_TOPIC, 10)
 
         # Internal status (True if there is an obstacle on the left/right)
         self.left_obstacle = not GPIO.input(self.left_sensor_pin)  # the sensor has an inverse logic

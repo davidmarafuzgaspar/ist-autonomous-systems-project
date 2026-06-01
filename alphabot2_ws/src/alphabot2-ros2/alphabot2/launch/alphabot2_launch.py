@@ -16,13 +16,12 @@ V4L2_CAMERA_LOG_LVL = "FATAL"
 def generate_launch_description():
 
     # Launch Arguments
-    use_obstable_avoidance_emergency_stop_arg = DeclareLaunchArgument(
-        'use_obstacle_avoidance_emergency_stop',
-        default_value='true',
-        description='Whether to use obstacle avoidance emergency stop or not. If true, the robot will stop when an obstacle is detected by the IR sensors.')
+    force_obstacle_stop_arg = DeclareLaunchArgument(
+        'force_obstacle_stop',
+        description='If true, the robot force-stops when an obstacle is detected by IR sensors.')
 
      # Launch Configurations
-    use_obstable_avoidance_emergency_stop = LaunchConfiguration('use_obstacle_avoidance_emergency_stop')
+    force_obstacle_stop = LaunchConfiguration('force_obstacle_stop')
 
     motion_driver_node = Node(
         package="alphabot2",
@@ -32,18 +31,9 @@ def generate_launch_description():
         emulate_tty=True,
         arguments=['--ros-args', '--log-level', MOTION_DRIVER_LOG_LVL],
         parameters=[{
-                    'use_obstacle_avoidance_emergency_stop': use_obstable_avoidance_emergency_stop,
+                    'force_obstacle_stop': force_obstacle_stop,
                 }],
     )
-
-    line_sensors_node = Node(
-        package="alphabot2",          
-        namespace=NAMESPACE,
-        executable="line_sensors",   
-        output="screen",
-            emulate_tty=True,
-        arguments=['--ros-args', '--log-level', 'WARN'], 
-     )
 
     ir_obstacle_sensors_node = Node(
         package="alphabot2",
@@ -55,46 +45,55 @@ def generate_launch_description():
                    '--log-level', IR_OBSTACLE_SENSORS_LOG_LVL],
     )
 
-    virtual_odometer_node = Node(
-        package="alphabot2",
+    ir_line_sensors_node = Node(
+        package="alphabot2",          
         namespace=NAMESPACE,
-        executable="virtual_odometer",
+        executable="IR_line_sensors",   
         output="screen",
         emulate_tty=True,
-        arguments=['--ros-args',
-                   '--log-level', VIRTUAL_ODOMETER_LOG_LVL],
-    )
+        arguments=['--ros-args', '--log-level', 'WARN'], 
+     )
 
-    qr_detector_node = Node(
-        package="alphabot2",
-        namespace=NAMESPACE,
-        executable="QR_detector",
-        output="screen",
-        emulate_tty=True,
-        arguments=['--ros-args',
-                   '--log-level', QR_DETECTOR_LOG_LVL],
-    )
+    # virtual_odometer_node = Node(
+    #     package="alphabot2",
+    #     namespace=NAMESPACE,
+    #     executable="virtual_odometer",
+    #     output="screen",
+    #     emulate_tty=True,
+    #     arguments=['--ros-args',
+    #                '--log-level', VIRTUAL_ODOMETER_LOG_LVL],
+    # )
 
-    v4l2_camera_node = Node(
-        package="v4l2_camera",
-        namespace=NAMESPACE,
-        executable="v4l2_camera_node",
-        output="screen",
-        emulate_tty=True,
-        arguments=['--ros-args',
-                   '--log-level', V4L2_CAMERA_LOG_LVL,],
-        parameters=[{
-       		 'image_size': [320, 240],
-       		 'camera_info_url': 'file:///home/deec/camera_info.yaml',
-   	 }],
-    )
+    # qr_detector_node = Node(
+    #     package="alphabot2",
+    #     namespace=NAMESPACE,
+    #     executable="QR_detector",
+    #     output="screen",
+    #     emulate_tty=True,
+    #     arguments=['--ros-args',
+    #                '--log-level', QR_DETECTOR_LOG_LVL],
+    # )
+
+    # v4l2_camera_node = Node(
+    #     package="v4l2_camera",
+    #     namespace=NAMESPACE,
+    #     executable="v4l2_camera_node",
+    #     output="screen",
+    #     emulate_tty=True,
+    #     arguments=['--ros-args',
+    #                '--log-level', V4L2_CAMERA_LOG_LVL,],
+    #     parameters=[{
+    #     	 'image_size': [320, 240],
+    #     	 'camera_info_url': 'file:///home/deec/camera_info.yaml',
+    #	 }],
+    # )
 
     return LaunchDescription([
-        use_obstable_avoidance_emergency_stop_arg,
-        ir_obstacle_sensors_node,
+        force_obstacle_stop_arg,
         motion_driver_node,
-        virtual_odometer_node,
-        qr_detector_node,
-        v4l2_camera_node,
-        line_sensors_node
+        ir_obstacle_sensors_node,
+        ir_line_sensors_node
+        # virtual_odometer_node,
+        # qr_detector_node,
+        # v4l2_camera_node,
     ])

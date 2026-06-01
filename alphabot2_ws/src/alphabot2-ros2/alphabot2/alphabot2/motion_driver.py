@@ -39,8 +39,9 @@ MAX_MOTOR_RPM = 750                         # max AlphaBot2 wheel RPM (80 ms for
                                             # (400 RPM for USB supply)
 RPM_TO_RAD_PER_SEC = 2 * math.pi / 60       # conversion factor from RPM to rad/s
 
-OBSTACLES_TOPIC = "obstacles"
+OBSTACLES_TOPIC = "ir_obstacles_sensors"
 CMD_VEL_TOPIC = "cmd_vel"
+FORCE_OBSTACLE_STOP_PARAM = "force_obstacle_stop"
 
 
 def gpio_init():
@@ -129,7 +130,7 @@ class Motor:
 class MotionDriver(Node):
     """
     ROS2 node that controls AlphaBot2's motion (Toshiba TB6612FNG dual motor driver).
-    It is subscribed to the "cmd_vel" (Twist msg) topic and to the "obstacles" (Obstacle msg) topic.
+    It is subscribed to the "cmd_vel" (Twist msg) topic and to the "ir_obstacles_sensors" (Obstacle msg) topic.
     """
     def __init__(self,
                  l_motor_fw_pin=AIN2_PIN,
@@ -142,6 +143,17 @@ class MotionDriver(Node):
         super().__init__("motion_driver")
 
         self.get_logger().info("Node init ...")
+
+        # Whether obstacle detections should trigger emergency stop logic.
+        self.declare_parameter(FORCE_OBSTACLE_STOP_PARAM, True)
+        self.force_obstacle_stop = (
+            self.get_parameter(FORCE_OBSTACLE_STOP_PARAM)
+            .get_parameter_value()
+            .bool_value
+        )
+        self.get_logger().info(
+            f"{FORCE_OBSTACLE_STOP_PARAM}={self.force_obstacle_stop}"
+        )
 
         # Create the timer (called by rclpy.spin()) with its callback function
         self.spin_timer = self.create_timer(SPIN_TIMER_PERIOD_SEC, self.spin_timer_callback)
@@ -281,7 +293,7 @@ class MotionDriver(Node):
                                f"linear={cmd_vel_msg.linear.x:.3}, angular={cmd_vel_msg.angular.z:.3}")
 
         # Prevent forward motion if there is an obstacle
-        if self.obstacle_detected and linear > 0:
+        if self.force_obstacle_stop and self.obstacle_detected and linear > 0:
             self.get_logger().warn(f"Forced linear=0 >> forward motion not permitted due to an obstacle")
             linear = 0
 
@@ -290,17 +302,23 @@ class MotionDriver(Node):
 
     def obstacles_sub_callback(self, obstacle_msg):
         """
-        Function called when there is a new Obstacle message on "obstacles" topic.
+        Function called when there is a new Obstacle message on "ir_obstacles_sensors" topic.
         It brakes the motors if there are obstacles.
         :param obstacle_msg: received Obstacle message.
         """
         # If there is an obstacle
         if obstacle_msg.left_obstacle or obstacle_msg.right_obstacle:
             # If the motors have not been braked and the obstacle has not been detected yet
-            if not self.braked and not self.obstacle_detected:
+            if (
+                self.force_obstacle_stop
+                and not self.braked
+                and not self.obstacle_detected
+            ):
                 self.obstacle_detected = True
                 self.get_logger().warn(f"Braking >> obstacle detected")
                 self.brake()
+            else:
+                self.obstacle_detected = True
         else:
             self.obstacle_detected = False
 
