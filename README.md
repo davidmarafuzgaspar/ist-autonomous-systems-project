@@ -401,3 +401,73 @@ ros2 topic echo /line_sensors
 
 ---
 
+## 5) Deploy para qualquer robot (transferir, compilar, instalar e lançar)
+
+### 5.1 No teu PC: enviar o código para o robot
+
+Definir dados do robot:
+
+```bash
+ROBOT_USER=deec
+ROBOT_IP=192.168.1.150
+ROBOT_WS=/home/$ROBOT_USER/alphabot2_ws
+```
+
+Transferir só os pacotes que editaste:
+
+```bash
+scp -r ~/Desktop/ist-autonomous-systems-project/alphabot2_ws/src/alphabot2-ros2 \
+  ${ROBOT_USER}@${ROBOT_IP}:${ROBOT_WS}/src/
+```
+```bash
+rsync -av --delete \
+  ~/Desktop/ist-autonomous-systems-project/alphabot2_ws/src/alphabot2-ros2/ \
+  ${ROBOT_USER}@${ROBOT_IP}:${ROBOT_WS}/src/alphabot2-ros2/
+```
+
+### 5.2 No robot: compilar e instalar
+
+```bash
+ssh ${ROBOT_USER}@${ROBOT_IP}
+cd ~/alphabot2_ws
+source /opt/ros/humble/setup.bash
+```
+
+Compilar as interfaces primeiro:
+
+```bash
+colcon build --packages-select alphabot2_interfaces --allow-overriding alphabot2_interfaces
+```
+
+Depois compilar o pacote principal:
+
+```bash
+colcon build --packages-select alphabot2 --allow-overriding alphabot2
+source install/setup.bash
+```
+
+> Nota: os warnings de `setuptools` sobre `script-dir` / `install-scripts` são warnings de compatibilidade futura (não bloqueiam o build agora).
+
+### 5.3 Lançar no robot
+
+O launch agora exige argumento obrigatório `force_obstacle_stop`:
+
+```bash
+ros2 launch alphabot2 alphabot2_launch.py force_obstacle_stop:=true
+```
+
+ou sem force-stop:
+
+```bash
+ros2 launch alphabot2 alphabot2_launch.py force_obstacle_stop:=false
+```
+
+### 5.4 Verificação rápida após launch
+
+```bash
+ros2 topic list | grep alphabot2
+ros2 topic echo /alphabot2/ir_line_sensors
+ros2 topic echo /alphabot2/ir_obstacles_sensors
+```
+
+Se os tópicos aparecerem e publicarem dados, o deploy ficou concluído.
