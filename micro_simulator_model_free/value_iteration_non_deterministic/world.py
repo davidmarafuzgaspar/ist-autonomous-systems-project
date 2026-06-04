@@ -73,14 +73,6 @@ class GridAction(IntEnum):
     TURN_AROUND = 3
 
 
-ACTION_LABELS: dict[GridAction, str] = {
-    GridAction.STRAIGHT: "STRAIGHT",
-    GridAction.TURN_RIGHT: "TURN_RIGHT",
-    GridAction.TURN_LEFT: "TURN_LEFT",
-    GridAction.TURN_AROUND: "TURN_AROUND",
-}
-
-
 @dataclass(frozen=True)
 class GridCell:
     row: int
@@ -421,28 +413,3 @@ class IntersectionWorld:
             return False
         self.goal = cell
         return True
-
-    def resize_grid(self, rows: int, cols: int) -> None:
-        self.grid = empty_grid(rows, cols)
-        if not self.in_bounds(self.start.row, self.start.col):
-            self.start = GridCell(0, 0)
-        if not self.is_traversable(self.start.row, self.start.col):
-            self.start = self._first_free_cell() or self.start
-        if not self.in_bounds(self.goal.row, self.goal.col):
-            self.goal = GridCell(rows - 1, cols - 1)
-        if not self.is_traversable(self.goal.row, self.goal.col) or self.goal == self.start:
-            self.goal = self._last_free_cell() or self.goal
-
-    def _first_free_cell(self) -> GridCell | None:
-        for row in range(self.rows):
-            for col in range(self.cols):
-                if self.is_traversable(row, col):
-                    return GridCell(row, col)
-        return None
-
-    def _last_free_cell(self) -> GridCell | None:
-        for row in range(self.rows - 1, -1, -1):
-            for col in range(self.cols - 1, -1, -1):
-                if self.is_traversable(row, col):
-                    return GridCell(row, col)
-        return None
