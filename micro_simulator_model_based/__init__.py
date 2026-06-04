@@ -1,1 +1,1 @@
-"""Model-based micro-simulators (VI, kinematic)."""
+"""Model-based micro-simulators (value iteration)."""

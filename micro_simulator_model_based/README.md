@@ -1,60 +1,40 @@
 # Micro-simulator (model-based)
 
-Python 3, Tk, numpy for VI.
+Value iteration em grelha orientada (determinística ou com slip). Python 3, Tk, numpy.
 
-**From inside each app folder** (works when your shell is already in `micro_simulator_model_based/`):
+## Run
 
 ```bash
 cd value_iteration && python run.py
 cd value_iteration_non_deterministic && python run.py
-cd kinematic && python run.py
 ```
 
-**From the repository root**:
+From repo root:
 
 ```bash
-python -m micro_simulator_model_based.value_iteration.main
-python -m micro_simulator_model_based.value_iteration_non_deterministic.main
-python -m micro_simulator_model_based.kinematic.main
+python -m micro_simulator_model_based.value_iteration
+python -m micro_simulator_model_based.value_iteration_non_deterministic
 ```
 
-`python -m micro_simulator_model_based...` fails if the current directory is *inside* `micro_simulator_model_based/` — use `run.py` instead.
+Inside `micro_simulator_model_based/` use `run.py` in each subfolder (not `-m`).
 
-| Package | Role |
-|---------|------|
-| `value_iteration/` | Deterministic VI on an oriented grid |
-| `value_iteration_non_deterministic/` | Same, with forward slip |
-| `kinematic/` | Continuous board sim (line + IR sensors) |
+| App | Role |
+|-----|------|
+| `value_iteration/` | VI determinística |
+| `value_iteration_non_deterministic/` | VI com slip à frente |
 
-Each app: **map/world setup** → main window → **Change world** reopens setup.
+Cada app: **map setup** (5×5 por defeito) → viewer VI → **Change world**.
 
-**Model-free Q-learning** lives in `../micro_simulator_model_free/` — see its README.
+## Layout (igual nos dois apps)
 
-## `value_iteration/`
+| Ficheiro | Conteúdo |
+|----------|----------|
+| `model.py` | MDP + `ValueIteration` + `rollout_greedy_policy` |
+| `gui.py` | Map setup + `InteractiveValueIterationViewer` |
+| `main.py` | Loop setup → viewer |
+| `run.py` | Launcher |
 
-| File | Role |
-|------|------|
-| `main.py` | Entry loop |
-| `world.py` | MDP, `simulate_step`, Bellman backup |
-| `value_iteration.py` | Jacobi / Gauss–Seidel sweeps |
-| `grid_setup.py` | Map editor |
-| `iteration_viewer.py` | VI GUI |
-| `ui_theme.py` | Tk styling |
+## Related
 
-## `value_iteration_non_deterministic/`
-
-Same files as above; `world.py` adds slip on the forward step; viewer edits slip weights.
-
-## `kinematic/`
-
-| File | Role |
-|------|------|
-| `main.py` | Entry loop |
-| `world_setup.py` | Lines×columns grid, obstacles on junctions |
-| `board.py` | Cross geometry, line sampling |
-| `config.py` | Board and robot parameters |
-| `obstacles.py` | Rectangular obstacles, IR ray tests |
-| `robot.py` | Differential drive and sensors |
-| `simulation.py` | Time stepping |
-| `visualizer.py` | WASD GUI |
-| `ui_theme.py` | Tk styling |
+- **Q-learning** — `../micro_simulator_model_free/`
+- **Robot kinematic** — `../robot_kinematic/`

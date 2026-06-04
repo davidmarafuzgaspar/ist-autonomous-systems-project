@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from .simulation import AlphaBotSimulation
-from .visualizer import SimulationViewer
-from .world_setup import run_world_setup
+from .gui import SimulationViewer, run_world_setup
+from .model import AlphaBotSimulation
 
 DT_S = 0.05
 
 
 def main() -> None:
     setup_seed = None
-    simulation = None
+    simulation: AlphaBotSimulation | None = None
 
     while True:
         if simulation is None:

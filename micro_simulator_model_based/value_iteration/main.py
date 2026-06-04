@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from .grid_setup import run_map_setup
-from .iteration_viewer import InteractiveValueIterationViewer
-from .world import GAMMA_DEFAULT, MAX_ITERATIONS_DEFAULT, THETA_DEFAULT, IntersectionWorld
+from .gui import InteractiveValueIterationViewer, run_map_setup
+from .model import IntersectionWorld
+from .model import GAMMA_DEFAULT, MAX_ITERATIONS_DEFAULT, THETA_DEFAULT
 
 
 def main() -> None:

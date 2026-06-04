@@ -1,5 +1,8 @@
+"""Grid MDP + algorithm."""
+
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import Sequence
@@ -8,11 +11,13 @@ DEFAULT_GRID: list[list[int]] = [
     [0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
 ]
 DEFAULT_START_ROW = 0
 DEFAULT_START_COL = 0
 DEFAULT_START_HEADING_NAME = "S"
-DEFAULT_GOAL_ROW = 2
+DEFAULT_GOAL_ROW = 4
 DEFAULT_GOAL_COL = 4
 
 GAMMA_DEFAULT = 0.85
@@ -25,6 +30,10 @@ REWARD_STRAIGHT_DEFAULT = -1.0
 REWARD_TURN_RIGHT_DEFAULT = -5.0
 REWARD_TURN_LEFT_DEFAULT = -5.0
 REWARD_TURN_AROUND_DEFAULT = -10.0
+
+SLIP_INTENDED_DEFAULT = 0.70
+SLIP_LEFT_DEFAULT = 0.15
+SLIP_RIGHT_DEFAULT = 0.15
 
 FREE_CELL = 0
 OBSTACLE_CELL = 1
@@ -81,6 +90,8 @@ class PoseState:
 MIN_GRID_SIZE = 2
 MAX_GRID_SIZE = 12
 
+TransitionOutcome = tuple[PoseState, float, bool]
+
 
 def empty_grid(rows: int, cols: int) -> list[list[int]]:
     if rows < MIN_GRID_SIZE or cols < MIN_GRID_SIZE:
@@ -97,10 +108,10 @@ def _clone_grid(grid: Sequence[Sequence[int]]) -> list[list[int]]:
 @dataclass
 class IntersectionWorld:
     """
-    Grid world for value iteration.
+    Grid world with expected Bellman backups over forward slip.
 
-    Each step applies a turn (optional), then a deterministic forward move.
-    Illegal moves leave pose unchanged and incur ``illegal_move_reward``.
+    Turn dynamics match the deterministic model; after each turn, the
+    forward cell is intended, slip-left, or slip-right with configurable weights.
     """
 
     grid: list[list[int]] = field(default_factory=lambda: _clone_grid(DEFAULT_GRID))
@@ -118,6 +129,10 @@ class IntersectionWorld:
     reward_turn_left: float = REWARD_TURN_LEFT_DEFAULT
     reward_turn_around: float = REWARD_TURN_AROUND_DEFAULT
 
+    slip_prob_intended: float = SLIP_INTENDED_DEFAULT
+    slip_prob_left: float = SLIP_LEFT_DEFAULT
+    slip_prob_right: float = SLIP_RIGHT_DEFAULT
+
     @property
     def rows(self) -> int:
         return len(self.grid)
@@ -134,6 +149,16 @@ class IntersectionWorld:
             GridAction.TURN_LEFT: self.reward_turn_left,
             GridAction.TURN_AROUND: self.reward_turn_around,
         }
+
+    def normalized_slip_probs(self) -> tuple[float, float, float]:
+        total = self.slip_prob_intended + self.slip_prob_left + self.slip_prob_right
+        if total <= 0.0:
+            return (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
+        return (
+            self.slip_prob_intended / total,
+            self.slip_prob_left / total,
+            self.slip_prob_right / total,
+        )
 
     @property
     def obstacles(self) -> set[GridCell]:
@@ -182,26 +207,68 @@ class IntersectionWorld:
             return heading.turn_right().turn_right()
         return heading
 
+    def _forward_outcome(
+        self,
+        state: PoseState,
+        move_heading: Heading,
+        action: GridAction,
+    ) -> TransitionOutcome:
+        row, col = state.cell.row, state.cell.col
+        original_heading = state.heading
+        next_heading = self._heading_after_action(original_heading, action)
+
+        dr, dc = HEADING_DELTA_RC[move_heading]
+        next_row, next_col = row + dr, col + dc
+        if not self.is_traversable(next_row, next_col):
+            return PoseState(state.cell, original_heading), self.illegal_move_reward, False
+
+        next_cell = GridCell(next_row, next_col)
+        if next_cell == self.goal:
+            return PoseState(next_cell, next_heading), self.goal_reward, True
+        return PoseState(next_cell, next_heading), self.action_rewards[action], False
+
+    def transition_distribution(
+        self,
+        state: PoseState,
+        action: GridAction,
+    ) -> list[tuple[PoseState, float, bool, float]]:
+        """Return ``(next_state, reward, done, probability)``; probabilities sum to 1."""
+        next_heading = self._heading_after_action(state.heading, action)
+        p_int, p_left, p_right = self.normalized_slip_probs()
+        branches = (
+            (next_heading, p_int),
+            (next_heading.turn_left(), p_left),
+            (next_heading.turn_right(), p_right),
+        )
+        return [
+            (*self._forward_outcome(state, move_h, action), prob)
+            for move_h, prob in branches
+        ]
+
     def simulate_step(
         self,
         state: PoseState,
         action: GridAction,
-    ) -> tuple[PoseState, float, bool]:
-        row, col = state.cell.row, state.cell.col
-        heading = state.heading
-        next_heading = self._heading_after_action(heading, action)
+    ) -> TransitionOutcome:
+        """Rollout helper: always use the intended forward branch (no slip sample)."""
+        next_heading = self._heading_after_action(state.heading, action)
+        return self._forward_outcome(state, next_heading, action)
 
-        dr, dc = HEADING_DELTA_RC[next_heading]
-        next_row, next_col = row + dr, col + dc
-        if not self.is_traversable(next_row, next_col):
-            return PoseState(state.cell, heading), self.illegal_move_reward, False
-
-        next_cell = GridCell(next_row, next_col)
-        done = next_cell == self.goal
-        if done:
-            return PoseState(next_cell, next_heading), self.goal_reward, True
-
-        return PoseState(next_cell, next_heading), self.action_rewards[action], False
+    def sample_transition(
+        self,
+        state: PoseState,
+        action: GridAction,
+        rng: random.Random,
+    ) -> TransitionOutcome:
+        dist = self.transition_distribution(state, action)
+        u = rng.random()
+        cumulative = 0.0
+        for next_state, reward, done, prob in dist:
+            cumulative += prob
+            if u <= cumulative:
+                return next_state, reward, done
+        last = dist[-1]
+        return last[0], last[1], last[2]
 
     def bellman_action_value(
         self,
@@ -210,9 +277,11 @@ class IntersectionWorld:
         values: dict[PoseState, float],
         gamma: float,
     ) -> float:
-        next_state, reward, done = self.simulate_step(state, action)
-        future = 0.0 if done else gamma * values.get(next_state, 0.0)
-        return reward + future
+        total = 0.0
+        for next_state, reward, done, prob in self.transition_distribution(state, action):
+            future = 0.0 if done else gamma * values.get(next_state, 0.0)
+            total += prob * (reward + future)
+        return total
 
     def aggregate_max_v_per_cell(self, values: dict[PoseState, float]) -> dict[GridCell, float]:
         out: dict[GridCell, float] = {}
@@ -346,3 +415,133 @@ class IntersectionWorld:
             return False
         self.goal = cell
         return True
+
+
+from dataclasses import dataclass
+
+
+@dataclass
+class ValueIterationResult:
+    values: dict[PoseState, float]
+    policy: dict[PoseState, GridAction | None]
+    iterations: int
+    final_delta: float
+    converged: bool
+
+
+class ValueIteration:
+    """Tabular VI over expected Q (slip). ``synchronous``: Jacobi vs Gauss–Seidel."""
+
+    def __init__(
+        self,
+        world: IntersectionWorld,
+        gamma: float = GAMMA_DEFAULT,
+        theta: float = THETA_DEFAULT,
+        max_iterations: int = MAX_ITERATIONS_DEFAULT,
+        synchronous: bool = False,
+    ) -> None:
+        self.world = world
+        self.gamma = gamma
+        self.theta = theta
+        self.max_iterations = max_iterations
+        self.synchronous = synchronous
+
+    def _action_value(
+        self,
+        state: PoseState,
+        action: GridAction,
+        values: dict[PoseState, float],
+    ) -> float:
+        return self.world.bellman_action_value(state, action, values, self.gamma)
+
+    def _bellman_backup(self, state: PoseState, values: dict[PoseState, float]) -> float:
+        return max(self._action_value(state, action, values) for action in self.world.iter_actions())
+
+    def initial_values(self) -> dict[PoseState, float]:
+        return {state: 0.0 for state in self.world.get_all_states()}
+
+    def step(self, values: dict[PoseState, float]) -> tuple[dict[PoseState, float], float]:
+        if self.synchronous:
+            snapshot = dict(values)
+            new_values = dict(values)
+            delta = 0.0
+            for state in self.world.get_all_states():
+                if self.world.is_terminal(state):
+                    continue
+                new_value = self._bellman_backup(state, snapshot)
+                delta = max(delta, abs(new_value - snapshot[state]))
+                new_values[state] = new_value
+            return new_values, delta
+
+        new_values = dict(values)
+        delta = 0.0
+        for state in self.world.get_all_states():
+            if self.world.is_terminal(state):
+                continue
+            old_value = new_values[state]
+            new_value = self._bellman_backup(state, new_values)
+            new_values[state] = new_value
+            delta = max(delta, abs(new_value - old_value))
+        return new_values, delta
+
+    def greedy_policy(self, values: dict[PoseState, float]) -> dict[PoseState, GridAction | None]:
+        policy: dict[PoseState, GridAction | None] = {}
+        actions = self.world.iter_actions()
+        for state in self.world.get_all_states():
+            if self.world.is_terminal(state):
+                policy[state] = None
+                continue
+            policy[state] = max(actions, key=lambda action: self._action_value(state, action, values))
+        return policy
+
+    def solve(self) -> ValueIterationResult:
+        values = self.initial_values()
+        iteration = 0
+        delta = float("inf")
+        converged = False
+
+        while iteration < self.max_iterations:
+            values, delta = self.step(values)
+            iteration += 1
+            if delta < self.theta:
+                converged = True
+                break
+
+        return ValueIterationResult(
+            values=values,
+            policy=self.greedy_policy(values),
+            iterations=iteration,
+            final_delta=delta,
+            converged=converged,
+        )
+
+
+def rollout_greedy_policy(
+    world: IntersectionWorld,
+    policy: dict[PoseState, GridAction | None],
+    start: PoseState,
+    *,
+    max_steps: int = 128,
+) -> list[PoseState]:
+    """Follow ``policy`` from ``start`` (intended branch, no slip sample)."""
+    state = start
+    path = [state]
+    seen: set[tuple[int, int, int]] = set()
+    for _ in range(max_steps):
+        if world.is_terminal(state):
+            break
+        key = (state.cell.row, state.cell.col, state.heading.value)
+        if key in seen:
+            break
+        seen.add(key)
+        action = policy.get(state)
+        if action is None:
+            break
+        next_state, _, done = world.simulate_step(state, action)
+        if next_state == state:
+            break
+        path.append(next_state)
+        state = next_state
+        if done:
+            break
+    return path

@@ -1,11 +1,8 @@
-# Value iteration
+# Value iteration (deterministic)
 
 ```bash
-# from this folder
 python run.py
-
-# or from repository root
-python -m micro_simulator_model_based.value_iteration.main
+# or: python -m micro_simulator_model_based.value_iteration
 ```
 
-See `../README.md` for algorithm notes.
+See `../README.md`. Modules: `model.py`, `gui.py`, `main.py`, `run.py`.

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from .grid_setup import run_map_setup
-from .ql_viewer import QLearningViewer
-from .world import IntersectionWorld
+from .gui import QLearningViewer, run_map_setup
+from .model import IntersectionWorld
 
 
 def main() -> None:

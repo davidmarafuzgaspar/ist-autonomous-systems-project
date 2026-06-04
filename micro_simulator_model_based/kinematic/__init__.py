@@ -1,1 +1,0 @@
-"""Kinematic line-following simulator."""

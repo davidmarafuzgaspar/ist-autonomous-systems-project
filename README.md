@@ -382,6 +382,21 @@ Estrutura relevante:
 - `alphabot2_ws/` (workspace ROS 2)
 - `alphabot2_ws/src/alphabot2-ros2/alphabot2/alphabot2/` (nós Python)
 - `alphabot2_ws/src/alphabot2-ros2/alphabot2/setup.py` (configuração do pacote)
+- `solver.py`, `main.py` — MDP e treino no robot (terminal)
+- `micro_simulator_model_free/` — Q-learning tabular (grelha, Tk); ver README na pasta
+- `micro_simulator_model_based/` — value iteration determinística e com slip; ver README na pasta
+- `robot_kinematic/` — simulador contínuo (linha + IR, WASD); ver README na pasta
+
+### Micro-simuladores e simulador cinemático
+
+| Pasta | Conteúdo |
+|-------|----------|
+| `micro_simulator_model_free/` | Model-free Q-learning — `model.py` + `gui.py`, grelha 5×5 |
+| `micro_simulator_model_based/value_iteration/` | VI determinística — `model.py` + `gui.py` |
+| `micro_simulator_model_based/value_iteration_non_deterministic/` | VI com slip — `model.py` + `gui.py` |
+| `robot_kinematic/` | Robot em grelha de cruzamentos: sensores de linha e obstáculos IR (não é ROS) |
+
+Em cada pasta: `python run.py` (ou `python -m …` a partir da raiz do repo). Detalhes nos respetivos `README.md`.
 
 ## 3) Compilar e correr a partir da pasta do repo
 ```terminal
