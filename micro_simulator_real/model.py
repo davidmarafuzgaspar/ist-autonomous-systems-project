@@ -1,52 +1,72 @@
-"""Policy sim: one known grid, train, execute optimal policy (no hidden / replan yet)."""
+"""Runtime sim: known map (VI), true map (hidden), sense ahead, replan with popup."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Callable
 
 from solver import (
     ACTION_STRAIGHT,
     ACTION_TURN_AROUND,
     ACTION_TURN_LEFT,
     ACTION_TURN_RIGHT,
-    MODE_MODEL_FREE,
-    NUM_EPISODES,
+    MODE_MODEL_BASED,
     Solver,
 )
 from world import FREE_CELL, HEADING_DELTA, OBSTACLE_CELL, GridWorld, Heading
 
 FREE = FREE_CELL
 OBSTACLE = OBSTACLE_CELL
+HIDDEN = 2
 
-MODE_MODEL_FREE_DEFAULT = MODE_MODEL_FREE
+AskRetrainFn = Callable[[int, int], bool]
+
 AUTO_MISSION_MAX_STEPS = 256
+VI_LOG_INTERVAL = 20
 
 
 @dataclass
 class Scenario:
-    grid: list[list[int]]
+    known_grid: list[list[int]]
+    true_grid: list[list[int]]
     start: tuple[int, int]
     goal: tuple[int, int]
     start_heading: Heading
-    solver_mode: str = MODE_MODEL_FREE_DEFAULT
+    solver_mode: str = MODE_MODEL_BASED
+
+    @property
+    def grid(self) -> list[list[int]]:
+        """Alias for known map (e.g. when re-opening setup)."""
+        return self.known_grid
 
     @property
     def rows(self) -> int:
-        return len(self.grid)
+        return len(self.known_grid)
 
     @property
     def cols(self) -> int:
-        return len(self.grid[0]) if self.rows else 0
+        return len(self.known_grid[0]) if self.rows else 0
 
     @classmethod
     def empty(cls, rows: int = 5, cols: int = 5) -> Scenario:
-        g = [[FREE for _ in range(cols)] for _ in range(rows)]
+        free = [[FREE for _ in range(cols)] for _ in range(rows)]
         return cls(
-            grid=[row[:] for row in g],
+            known_grid=[row[:] for row in free],
+            true_grid=[row[:] for row in free],
             start=(0, 0),
             goal=(rows - 1, cols - 1),
             start_heading=Heading.S,
         )
+
+
+@dataclass
+class SenseResult:
+    ahead_row: int | None
+    ahead_col: int | None
+    discovered_new: bool
+    blocks_plan: bool
+    replanned: bool
+    message: str
 
 
 @dataclass
@@ -71,32 +91,39 @@ class RealRuntimeSim:
     def cols(self) -> int:
         return self.scenario.cols
 
-    def _matrix(self) -> list[list[int]]:
+    def _known_matrix(self) -> list[list[int]]:
         return [
             [OBSTACLE if cell == OBSTACLE else FREE for cell in row]
-            for row in self.scenario.grid
+            for row in self.scenario.known_grid
         ]
+
+    def _true_grid_copy(self) -> list[list[int]]:
+        return [row[:] for row in self.scenario.true_grid]
 
     def _init_solver(self) -> None:
         self.solver = Solver(
             GridWorld.from_matrix(
-                self._matrix(),
+                self._known_matrix(),
                 self.scenario.start,
                 self.scenario.start_heading,
                 self.scenario.goal,
             ),
             mode=self.scenario.solver_mode,
-            num_episodes=NUM_EPISODES,
         )
 
-    def _blocked(self, row: int, col: int) -> bool:
+    def _true_blocked(self, row: int, col: int) -> bool:
         if not (0 <= row < self.rows and 0 <= col < self.cols):
             return True
-        return self.scenario.grid[row][col] == OBSTACLE
+        return self.scenario.true_grid[row][col] != FREE
+
+    def _known_blocked(self, row: int, col: int) -> bool:
+        if not (0 <= row < self.rows and 0 <= col < self.cols):
+            return True
+        return self.scenario.known_grid[row][col] == OBSTACLE
 
     def _reset_robot_pose(self) -> None:
         self.robot = GridWorld.from_matrix(
-            self.scenario.grid,
+            self._true_grid_copy(),
             self.scenario.start,
             self.scenario.start_heading,
             self.scenario.goal,
@@ -104,7 +131,7 @@ class RealRuntimeSim:
 
     def _sync_solver_world(self) -> None:
         self.solver.world = GridWorld.from_matrix(
-            self._matrix(),
+            self._known_matrix(),
             (self.robot.row, self.robot.col),
             self.robot.heading,
             self.scenario.goal,
@@ -113,10 +140,18 @@ class RealRuntimeSim:
         self.solver.cols = self.cols
         self.solver.goal = self.scenario.goal
 
+    def _sync_robot_grid(self) -> None:
+        self.robot = GridWorld.from_matrix(
+            self._true_grid_copy(),
+            (self.robot.row, self.robot.col),
+            self.robot.heading,
+            self.scenario.goal,
+        )
+
     def _emit(self, message: str) -> None:
         self.log.append(message)
-        if len(self.log) > 80:
-            self.log = self.log[-80:]
+        if len(self.log) > 120:
+            self.log = self.log[-120:]
 
     def _record_trail(self) -> None:
         key = (self.robot.row, self.robot.col, self.robot.heading.name)
@@ -126,6 +161,13 @@ class RealRuntimeSim:
     def clear_trail(self) -> None:
         self.trail.clear()
         self._record_trail()
+
+    def cell_ahead(self) -> tuple[int, int] | None:
+        dr, dc = HEADING_DELTA[self.robot.heading]
+        nr, nc = self.robot.row + dr, self.robot.col + dc
+        if not self.robot.is_in_bounds(nr, nc):
+            return None
+        return nr, nc
 
     def policy_action(self, row: int, col: int, heading: Heading) -> int | None:
         if not self.trained:
@@ -173,18 +215,89 @@ class RealRuntimeSim:
         self._reset_robot_pose()
         self.clear_trail()
         self._init_solver()
-        self.solver.train(log_fn=self._emit, log_interval=100)
+        self._emit("[sim] Value iteration on known map…")
+        self.solver.train(log_fn=self._emit, log_interval=VI_LOG_INTERVAL)
         self._sync_solver_world()
         self.trained = True
-        self._emit("Training complete.")
+        self._emit("[sim] Training complete.")
+
+    def replan(self) -> None:
+        if not self.trained:
+            self._emit("[sim] Train first.")
+            return
+        self._sync_solver_world()
+        self._emit("[sim] Replan (VI) from current pose…")
+        self.solver.replan_from_state(
+            self.robot.row,
+            self.robot.col,
+            self.robot.heading,
+            log_fn=self._emit,
+            log_interval=VI_LOG_INTERVAL,
+        )
+        self._emit("[sim] Replan done.")
+
+    def sense_ahead(self) -> SenseResult:
+        ahead = self.cell_ahead()
+        if ahead is None:
+            msg = "Ahead: out of bounds."
+            self._emit(msg)
+            return SenseResult(None, None, False, False, False, msg)
+
+        ar, ac = ahead
+        if not self._true_blocked(ar, ac):
+            msg = f"Ahead ({ar},{ac}): clear."
+            self._emit(msg)
+            return SenseResult(ar, ac, False, False, False, msg)
+
+        if self._known_blocked(ar, ac):
+            msg = f"Ahead ({ar},{ac}): known obstacle."
+            self._emit(msg)
+            return SenseResult(ar, ac, False, False, False, msg)
+
+        self.scenario.known_grid[ar][ac] = OBSTACLE
+        self.scenario.true_grid[ar][ac] = OBSTACLE
+        self._sync_robot_grid()
+
+        blocks = replanned = False
+        if self.trained:
+            blocks = self.solver.path_contains_cell(
+                ar,
+                ac,
+                start_row=self.robot.row,
+                start_col=self.robot.col,
+                start_heading=self.robot.heading,
+            )
+            self.solver.update_discovered_obstacle(ar, ac)
+            self._sync_solver_world()
+
+        msg = f"NEW obstacle at ({ar},{ac})"
+        if blocks:
+            msg += " — blocks planned path"
+        self._emit(msg)
+        return SenseResult(ar, ac, True, blocks, replanned, msg)
+
+    def handle_discovery(
+        self,
+        sense: SenseResult,
+        ask_retrain: AskRetrainFn | None,
+    ) -> str:
+        if not sense.discovered_new or not sense.blocks_plan or not self.trained:
+            return sense.message
+        if ask_retrain is None:
+            return sense.message + " (retrain skipped — no UI callback)"
+
+        if ask_retrain(sense.ahead_row or 0, sense.ahead_col or 0):
+            self.replan()
+            return sense.message + " → replanned (VI on known map)."
+        return sense.message + " → kept previous policy."
 
     def set_pose(self, row: int, col: int, heading: Heading) -> str:
         if not self.robot.is_in_bounds(row, col):
             return "Out of bounds."
-        if self._blocked(row, col):
-            return f"({row},{col}) is blocked."
+        if self._true_blocked(row, col):
+            return f"({row},{col}) blocked."
         self.robot = GridWorld.from_matrix(
-            self.scenario.grid,
+            self._true_grid_copy(),
             (row, col),
             heading,
             self.scenario.goal,
@@ -203,7 +316,7 @@ class RealRuntimeSim:
         if action is None:
             return "No policy."
         if action == ACTION_STRAIGHT:
-            return "Policy: STRAIGHT — use Move forward."
+            return "Policy: STRAIGHT — use Move forward / Next step."
 
         if action == ACTION_TURN_RIGHT:
             self.robot.turn_right()
@@ -215,7 +328,7 @@ class RealRuntimeSim:
         self._record_trail()
         return f"Turn → {self.robot.heading.name}"
 
-    def move_forward(self) -> str:
+    def move_forward(self, *, ask_retrain: AskRetrainFn | None = None) -> str:
         if self.robot.is_at_goal():
             return "At goal."
         if not self.trained:
@@ -224,15 +337,22 @@ class RealRuntimeSim:
         nr, nc = self.robot.row + dr, self.robot.col + dc
         if not self.robot.is_in_bounds(nr, nc):
             return "Out of bounds."
-        if self._blocked(nr, nc):
-            return f"Blocked at ({nr},{nc})."
+        if self._true_blocked(nr, nc):
+            sense = self.sense_ahead()
+            return self.handle_discovery(sense, ask_retrain)
 
         self.robot.step_to_next_intersection()
         self._sync_solver_world()
         self._record_trail()
-        return f"Forward → {self.robot.pose_str()}"
+        sense = self.sense_ahead()
+        detail = self.handle_discovery(sense, ask_retrain)
+        return f"Forward → {self.robot.pose_str()} · {detail}"
 
-    def execute_policy_cycle(self) -> tuple[str, bool]:
+    def execute_policy_cycle(
+        self,
+        *,
+        ask_retrain: AskRetrainFn | None = None,
+    ) -> tuple[str, bool]:
         if self.robot.is_at_goal():
             return "Goal reached.", True
         if not self.trained:
@@ -242,7 +362,7 @@ class RealRuntimeSim:
             return "No policy.", False
         if action != ACTION_STRAIGHT:
             return self.apply_policy_turn(), False
-        return self.move_forward(), self.robot.is_at_goal()
+        return self.move_forward(ask_retrain=ask_retrain), self.robot.is_at_goal()
 
     def manual_goto_adjacent(self, row: int, col: int) -> str:
         if (row, col) == (self.robot.row, self.robot.col):
