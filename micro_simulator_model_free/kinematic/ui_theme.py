@@ -11,19 +11,8 @@ FG = "#f0f0f0"
 MUTED = "#9ca3af"
 ACCENT = "#4a9eff"
 BORDER = "#404040"
-
 CANVAS_BG = "#252525"
 BOARD = "#fafafa"
-LINE = "#d4d4d4"
-CELL_FREE = "#ffffff"
-CELL_BLOCK = "#6b7280"
-CELL_START = "#22c55e"
-CELL_GOAL = "#4a9eff"
-POLICY = "#4a9eff"
-OBSTACLE = "#6b7280"
-
-POS_SCALE_MAX = 150.0
-NEG_SCALE_MAX = 60.0
 
 FONT = ("Segoe UI", 10)
 FONT_BOLD = ("Segoe UI", 11, "bold")

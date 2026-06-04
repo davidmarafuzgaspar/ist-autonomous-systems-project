@@ -1,5 +1,3 @@
-"""Tk theme helpers; call ``setup(root)`` after ``Tk()``."""
-
 from __future__ import annotations
 
 import sys

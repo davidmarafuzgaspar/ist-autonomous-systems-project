@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from .config import BoardConfig
@@ -15,80 +16,94 @@ class Point2D:
     y: float
 
 
-@dataclass(frozen=True)
-class WhiteCell:
-    row: int
-    col: int
-    marker_id: int
-    center_m: Point2D
+def line_centers_for_axis(crosses: int, spacing_m: float) -> list[float]:
+    half_span = (crosses - 1) / 2.0
+    return [(index - half_span) * spacing_m for index in range(crosses)]
 
 
 @dataclass
 class CrossBoard:
     config: BoardConfig = field(default_factory=BoardConfig)
 
-    def line_centers(self) -> list[float]:
-        half_span = (self.config.crosses_per_axis - 1) / 2.0
-        return [
-            (index - half_span) * self.config.spacing_m
-            for index in range(self.config.crosses_per_axis)
-        ]
+    def line_centers_x(self) -> list[float]:
+        return line_centers_for_axis(self.config.columns, self.config.spacing_m)
+
+    def line_centers_y(self) -> list[float]:
+        return line_centers_for_axis(self.config.lines, self.config.spacing_m)
 
     def is_inside(self, x_m: float, y_m: float) -> bool:
-        half = self.config.half_extent_m
-        return -half <= x_m <= half and -half <= y_m <= half
+        return (
+            -self.config.half_extent_x_m <= x_m <= self.config.half_extent_x_m
+            and -self.config.half_extent_y_m <= y_m <= self.config.half_extent_y_m
+        )
 
     def is_robot_inside(self, x_m: float, y_m: float, radius_m: float) -> bool:
-        half = self.config.half_extent_m - radius_m
-        return -half <= x_m <= half and -half <= y_m <= half
-
-    def white_cell_size_m(self) -> float:
-        return self.config.spacing_m - self.config.line_width_m
-
-    def white_cell_centers(self) -> tuple[list[float], list[float]]:
-        centers = self.line_centers()
-        line_extent = self.config.line_extent_m
-
-        x_centers: list[float] = [(-line_extent + centers[0]) / 2.0]
-        for index in range(len(centers) - 1):
-            x_centers.append((centers[index] + centers[index + 1]) / 2.0)
-        x_centers.append((centers[-1] + line_extent) / 2.0)
-
-        y_centers: list[float] = [(centers[-1] + line_extent) / 2.0]
-        for index in range(len(centers) - 2, -1, -1):
-            y_centers.append((centers[index] + centers[index + 1]) / 2.0)
-        y_centers.append((-line_extent + centers[0]) / 2.0)
-
-        return x_centers, y_centers
-
-    def white_cells(self) -> list[WhiteCell]:
-        x_centers, y_centers = self.white_cell_centers()
-        cells: list[WhiteCell] = []
-        marker_id = 0
-        for row, center_y in enumerate(y_centers):
-            for col, center_x in enumerate(x_centers):
-                cells.append(
-                    WhiteCell(
-                        row=row,
-                        col=col,
-                        marker_id=marker_id,
-                        center_m=Point2D(center_x, center_y),
-                    )
-                )
-                marker_id += 1
-        return cells
+        hx = self.config.half_extent_x_m - radius_m
+        hy = self.config.half_extent_y_m - radius_m
+        return -hx <= x_m <= hx and -hy <= y_m <= hy
 
     def is_line_at(self, x_m: float, y_m: float) -> bool:
         if not self.is_inside(x_m, y_m):
             return False
         half_width = self.config.line_width_m / 2.0
         tolerance = 1e-6
-        line_extent = self.config.line_extent_m
-        if abs(x_m) > line_extent + tolerance or abs(y_m) > line_extent + tolerance:
+        if (
+            abs(x_m) > self.config.line_extent_x_m + tolerance
+            or abs(y_m) > self.config.line_extent_y_m + tolerance
+        ):
             return False
-        on_vertical = any(abs(x_m - center) <= half_width + tolerance for center in self.line_centers())
-        on_horizontal = any(abs(y_m - center) <= half_width + tolerance for center in self.line_centers())
+        on_vertical = any(
+            abs(x_m - center) <= half_width + tolerance for center in self.line_centers_x()
+        )
+        on_horizontal = any(
+            abs(y_m - center) <= half_width + tolerance for center in self.line_centers_y()
+        )
         return on_vertical or on_horizontal
 
     def color_at(self, x_m: float, y_m: float) -> int:
         return BLACK if self.is_line_at(x_m, y_m) else WHITE
+
+    def crossing_points(self) -> list[Point2D]:
+        return [
+            Point2D(x, y)
+            for x in self.line_centers_x()
+            for y in self.line_centers_y()
+        ]
+
+    def nearest_crossing(self, x_m: float, y_m: float, *, max_dist_m: float | None = None) -> Point2D | None:
+        if max_dist_m is None:
+            max_dist_m = self.config.spacing_m * 0.45
+        best: Point2D | None = None
+        best_dist = max_dist_m
+        for point in self.crossing_points():
+            dist = math.hypot(point.x - x_m, point.y - y_m)
+            if dist < best_dist:
+                best_dist = dist
+                best = point
+        return best
+
+    def crossing_key(self, point: Point2D) -> tuple[float, float]:
+        return (round(point.x, 4), round(point.y, 4))
+
+    def world_to_canvas(self, x_m: float, y_m: float, canvas_px: int) -> tuple[float, float]:
+        view = self.config.view_half_extent_m
+        scale = canvas_px / (2.0 * view)
+        x_px = (x_m + view) * scale
+        y_px = (view - y_m) * scale
+        return x_px, y_px
+
+    def meters_to_pixels(self, meters: float, canvas_px: int) -> float:
+        view = self.config.view_half_extent_m
+        return meters * canvas_px / (2.0 * view)
+
+    def canvas_to_world(self, px: float, py: float, canvas_px: int) -> tuple[float, float]:
+        view = self.config.view_half_extent_m
+        scale = canvas_px / (2.0 * view)
+        x_m = px / scale - view
+        y_m = view - py / scale
+        return x_m, y_m
+
+    def default_start_pose(self) -> tuple[float, float, float]:
+        xs = self.line_centers_x()
+        ys = self.line_centers_y()
+        return xs[0], ys[0], math.pi / 2.0

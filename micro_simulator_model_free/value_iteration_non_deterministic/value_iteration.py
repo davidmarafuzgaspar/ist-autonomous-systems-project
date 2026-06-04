@@ -1,5 +1,3 @@
-"""Value iteration using expected Q-values over the slip distribution."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,5 +1,3 @@
-"""Bellman value iteration with Jacobi or Gauss–Seidel state sweeps."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,5 +1,3 @@
-"""Oriented grid MDP: state (cell, heading), turn-then-forward dynamics, configurable rewards."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field

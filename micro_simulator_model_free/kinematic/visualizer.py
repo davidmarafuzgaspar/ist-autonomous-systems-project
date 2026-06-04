@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 import tkinter as tk
 
+from . import ui_theme as ui
+
 from .robot import SensorSnapshot
 from .simulation import AlphaBotSimulation
 
@@ -11,26 +13,75 @@ class SimulationViewer:
     def __init__(self, simulation: AlphaBotSimulation, dt_s: float = 0.05) -> None:
         self.simulation = simulation
         self.dt_s = dt_s
+        self.change_world_requested = False
+        self._tick_job: str | None = None
+
         self.window = tk.Tk()
-        self.window.title("AlphaBot2 Pure Python Simulator")
-        self.canvas_size_px = 900
-        self.sidebar_width_px = 270
+        self.window.title("AlphaBot2 Simulator")
+        ui.setup(self.window)
+
+        body = tk.Frame(self.window, bg=ui.BG)
+        body.pack(fill="both", expand=True)
+
+        self.canvas_size_px = 720
         self.canvas = tk.Canvas(
-            self.window,
-            width=self.canvas_size_px + self.sidebar_width_px,
+            body,
+            width=self.canvas_size_px,
             height=self.canvas_size_px,
             bg="#f0f0f0",
             highlightthickness=0,
         )
-        self.canvas.pack()
+        self.canvas.pack(side=tk.LEFT, padx=(12, 0), pady=12)
+
+        self.sidebar = tk.Frame(body, bg=ui.BG, width=260)
+        self.sidebar.pack(side=tk.RIGHT, fill="y", padx=12, pady=12)
+        self.sidebar.pack_propagate(False)
+        self._build_sidebar()
 
         self.keys_pressed: set[str] = set()
         self.window.bind("<KeyPress>", self._on_key_press)
         self.window.bind("<KeyRelease>", self._on_key_release)
 
-    def run(self) -> None:
+    def _build_sidebar(self) -> None:
+        title = ui.label(self.sidebar, "AlphaBot2")
+        title.configure(font=ui.FONT_TITLE)
+        title.pack(anchor="w", pady=(0, 8))
+
+        cfg = self.simulation.board.config
+        ui.label(
+            self.sidebar,
+            f"Grid: {cfg.lines}×{cfg.columns}",
+            muted=True,
+        ).pack(anchor="w", pady=(0, 4))
+        ui.label(
+            self.sidebar,
+            f"Obstacles: {len(self.simulation.obstacles)}",
+            muted=True,
+        ).pack(anchor="w", pady=(0, 12))
+
+        ui.label(self.sidebar, "Controls", muted=True).pack(anchor="w")
+        ui.label(self.sidebar, "WASD / arrows - drive", muted=True).pack(anchor="w")
+        ui.label(self.sidebar, "R - reset pose", muted=True).pack(anchor="w", pady=(0, 16))
+
+        self.line_label = ui.label(self.sidebar, "Line: —")
+        self.line_label.pack(anchor="w")
+        self.obstacle_label = ui.label(self.sidebar, "IR: —")
+        self.obstacle_label.pack(anchor="w", pady=(0, 16))
+
+        ui.line(self.sidebar)
+        ui.button(self.sidebar, "Change world", self._on_change_world).pack(fill="x", pady=(12, 0))
+
+    def run(self) -> bool:
+        self.change_world_requested = False
         self._tick()
         self.window.mainloop()
+        return self.change_world_requested
+
+    def _on_change_world(self) -> None:
+        self.change_world_requested = True
+        if self._tick_job is not None:
+            self.window.after_cancel(self._tick_job)
+        self.window.destroy()
 
     def _on_key_press(self, event: tk.Event) -> None:
         if event.keysym.lower() == "r":
@@ -58,79 +109,40 @@ class SimulationViewer:
         self.simulation.set_command(linear_m_s=linear, angular_rad_s=angular)
         snapshot = self.simulation.step(self.dt_s)
         self._draw(snapshot)
-        self.window.after(int(self.dt_s * 1000), self._tick)
+        self.line_label.configure(text=f"Line: {snapshot.line_binary}")
+        self.obstacle_label.configure(text=f"IR: {list(snapshot.obstacle_binary)}")
+        self._tick_job = self.window.after(int(self.dt_s * 1000), self._tick)
 
     def _world_to_canvas(self, x_m: float, y_m: float) -> tuple[float, float]:
-        extent = self.simulation.board.config.half_extent_m + self.simulation.board.config.margin_m
-        scale = self.canvas_size_px / (2.0 * extent)
-        x_px = (x_m + extent) * scale
-        y_px = (extent - y_m) * scale
-        return x_px, y_px
+        return self.simulation.board.world_to_canvas(x_m, y_m, self.canvas_size_px)
 
     def _meters_to_pixels(self, meters: float) -> float:
-        extent = self.simulation.board.config.half_extent_m + self.simulation.board.config.margin_m
-        return meters * self.canvas_size_px / (2.0 * extent)
+        return self.simulation.board.meters_to_pixels(meters, self.canvas_size_px)
 
     def _draw(self, snapshot: SensorSnapshot) -> None:
         self.canvas.delete("all")
         self._draw_board()
-        self._draw_markers(snapshot)
         self._draw_obstacles()
         self._draw_robot(snapshot)
-        self._draw_sidebar(snapshot)
 
     def _draw_board(self) -> None:
-        half = self.simulation.board.config.half_extent_m
-        x0, y0 = self._world_to_canvas(-half, half)
-        x1, y1 = self._world_to_canvas(half, -half)
+        board = self.simulation.board
+        cfg = board.config
+        hx, hy = cfg.half_extent_x_m, cfg.half_extent_y_m
+        x0, y0 = self._world_to_canvas(-hx, hy)
+        x1, y1 = self._world_to_canvas(hx, -hy)
         self.canvas.create_rectangle(x0, y0, x1, y1, fill="white", outline="#888", width=2)
 
-        line_width = self._meters_to_pixels(self.simulation.board.config.line_width_m)
-        line_extent = self.simulation.board.config.line_extent_m
-        for center in self.simulation.board.line_centers():
-            x0, y0 = self._world_to_canvas(center, line_extent)
-            x1, y1 = self._world_to_canvas(center, -line_extent)
+        line_width = max(1, int(self._meters_to_pixels(cfg.line_width_m)))
+        for center in board.line_centers_x():
+            x0, y0 = self._world_to_canvas(center, cfg.line_extent_y_m)
+            x1, y1 = self._world_to_canvas(center, -cfg.line_extent_y_m)
             self.canvas.create_line(x0, y0, x1, y1, fill="black", width=line_width)
 
-            x0, y0 = self._world_to_canvas(-line_extent, center)
-            x1, y1 = self._world_to_canvas(line_extent, center)
+        for center in board.line_centers_y():
+            x0, y0 = self._world_to_canvas(-cfg.line_extent_x_m, center)
+            x1, y1 = self._world_to_canvas(cfg.line_extent_x_m, center)
             self.canvas.create_line(x0, y0, x1, y1, fill="black", width=line_width)
-
-    def _draw_markers(self, snapshot: SensorSnapshot) -> None:
-        visible_marker_ids = {marker.marker_id for marker in snapshot.camera_visible_markers}
-        localized_marker_id = None
-        if snapshot.localized_cell is not None:
-            localized_marker_id = snapshot.localized_cell.marker_id
-
-        marker_half_size_px = max(8.0, self._meters_to_pixels(self.simulation.board.white_cell_size_m() * 0.16))
-        for marker in self.simulation.white_cells():
-            px, py = self._world_to_canvas(marker.center_m.x, marker.center_m.y)
-
-            fill = "#f4f4f4"
-            outline = "#8a8a8a"
-            if marker.marker_id in visible_marker_ids:
-                fill = "#d6f5d6"
-                outline = "#2a8a2a"
-            if marker.marker_id == localized_marker_id:
-                fill = "#bfe7ff"
-                outline = "#1565c0"
-
-            self.canvas.create_rectangle(
-                px - marker_half_size_px,
-                py - marker_half_size_px,
-                px + marker_half_size_px,
-                py + marker_half_size_px,
-                fill=fill,
-                outline=outline,
-                width=2,
-            )
-            self.canvas.create_text(
-                px,
-                py,
-                text=str(marker.marker_id),
-                fill="#333",
-                font=("Courier New", 8, "bold"),
-            )
 
     def _draw_obstacles(self) -> None:
         for obstacle in self.simulation.obstacles:
@@ -142,8 +154,6 @@ class SimulationViewer:
         pose = self.simulation.robot.pose
         radius_px = self._meters_to_pixels(self.simulation.robot.config.radius_m)
         center_x, center_y = self._world_to_canvas(pose.x, pose.y)
-
-        self._draw_camera(snapshot)
 
         self.canvas.create_oval(
             center_x - radius_px,
@@ -177,72 +187,3 @@ class SimulationViewer:
             end_y = point.y + ray_len * math.sin(pose.yaw)
             ray_end_px = self._world_to_canvas(end_x, end_y)
             self.canvas.create_line(px, py, ray_end_px[0], ray_end_px[1], fill=color, dash=(4, 2), width=2)
-
-    def _draw_camera(self, snapshot: SensorSnapshot) -> None:
-        camera_position = snapshot.camera_position_m
-        camera_px = self._world_to_canvas(camera_position.x, camera_position.y)
-        fov = self.simulation.robot.config.camera_fov_rad
-        max_range_m = self.simulation.robot.config.camera_max_range_m
-
-        wedge_points = [camera_px]
-        ray_samples = 12
-        for index in range(ray_samples + 1):
-            angle = snapshot.camera_yaw_rad - fov / 2.0 + index * fov / ray_samples
-            end_x = camera_position.x + max_range_m * math.cos(angle)
-            end_y = camera_position.y + max_range_m * math.sin(angle)
-            wedge_points.append(self._world_to_canvas(end_x, end_y))
-
-        flattened_points = [value for point in wedge_points for value in point]
-        self.canvas.create_polygon(
-            flattened_points,
-            fill="",
-            outline="#2979ff",
-            width=2,
-        )
-        self.canvas.create_oval(
-            camera_px[0] - 5,
-            camera_px[1] - 5,
-            camera_px[0] + 5,
-            camera_px[1] + 5,
-            fill="#2979ff",
-            outline="#0d47a1",
-        )
-
-    def _draw_sidebar(self, snapshot: SensorSnapshot) -> None:
-        left = self.canvas_size_px + 20
-        self.canvas.create_text(
-            left,
-            40,
-            anchor="w",
-            text="AlphaBot2 Sensors",
-            font=("Arial", 16, "bold"),
-            fill="#222",
-        )
-
-        info_lines = [
-            "line sensors:",
-            f"binary: {snapshot.line_binary}",
-            "",
-            "front obstacle sensors:",
-            f"binary: {list(snapshot.obstacle_binary)}",
-            "",
-            "camera localization:",
-            self._localized_cell_text(snapshot),
-        ]
-
-        y = 90
-        for line in info_lines:
-            self.canvas.create_text(
-                left,
-                y,
-                anchor="w",
-                text=line,
-                font=("Courier New", 11),
-                fill="#333",
-            )
-            y += 24
-
-    def _localized_cell_text(self, snapshot: SensorSnapshot) -> str:
-        if snapshot.localized_cell is None:
-            return "localized: --"
-        return f"via marker {snapshot.localized_cell.marker_id}"

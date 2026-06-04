@@ -1,5 +1,3 @@
-"""Pre-run map editor: grid size, obstacles, start, goal, and initial heading."""
-
 from __future__ import annotations
 
 import tkinter as tk

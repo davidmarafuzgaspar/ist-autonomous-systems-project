@@ -1,47 +1,41 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 
-from .board import CrossBoard, WhiteCell
+from .board import CrossBoard
 from .config import BoardConfig, RobotConfig
-from .obstacles import RectangleObstacle
+from .obstacles import RectangleObstacle, snap_obstacles_to_board
 from .robot import AlphaBot2Robot, Pose2D, SensorSnapshot
-
-
-def default_obstacles() -> list[RectangleObstacle]:
-    size_m = 0.08
-    positions = [
-        ("cross_left_mid", -0.60, 0.0),
-        ("cross_top_left_inner", -0.30, 0.60),
-        ("cross_mid_right", 0.30, 0.0),
-        ("cross_bottom_mid", 0.0, -0.30),
-        ("cross_right_lower", 0.60, -0.30),
-    ]
-    return [
-        RectangleObstacle(name=name, center_x_m=x, center_y_m=y, width_m=size_m, height_m=size_m)
-        for name, x, y in positions
-    ]
+from .world_setup import WorldSetup
 
 
 @dataclass
 class AlphaBotSimulation:
     board: CrossBoard = field(default_factory=CrossBoard)
     robot: AlphaBot2Robot = field(default_factory=AlphaBot2Robot)
-    obstacles: list[RectangleObstacle] = field(default_factory=default_obstacles)
+    obstacles: list[RectangleObstacle] = field(default_factory=list)
     time_s: float = 0.0
 
     @classmethod
-    def create_default(cls) -> AlphaBotSimulation:
-        start_pose = Pose2D(x=-0.60, y=-0.60, yaw=math.pi / 2.0)
+    def from_setup(cls, setup: WorldSetup) -> AlphaBotSimulation:
+        board = CrossBoard(config=BoardConfig(lines=setup.lines, columns=setup.columns))
+        sx, sy, yaw = board.default_start_pose()
         return cls(
-            board=CrossBoard(config=BoardConfig()),
-            robot=AlphaBot2Robot(config=RobotConfig(), pose=start_pose),
-            obstacles=default_obstacles(),
+            board=board,
+            robot=AlphaBot2Robot(config=RobotConfig(), pose=Pose2D(x=sx, y=sy, yaw=yaw)),
+            obstacles=snap_obstacles_to_board(list(setup.obstacles), board),
+        )
+
+    def to_setup(self) -> WorldSetup:
+        return WorldSetup(
+            lines=self.board.config.lines,
+            columns=self.board.config.columns,
+            obstacles=list(self.obstacles),
         )
 
     def reset(self) -> None:
-        self.robot.reset(Pose2D(x=-0.60, y=-0.60, yaw=math.pi / 2.0))
+        sx, sy, yaw = self.board.default_start_pose()
+        self.robot.reset(Pose2D(x=sx, y=sy, yaw=yaw))
         self.time_s = 0.0
 
     def step(self, dt_s: float) -> SensorSnapshot:
@@ -51,6 +45,3 @@ class AlphaBotSimulation:
 
     def set_command(self, linear_m_s: float, angular_rad_s: float) -> None:
         self.robot.set_command(linear_m_s=linear_m_s, angular_rad_s=angular_rad_s)
-
-    def white_cells(self) -> list[WhiteCell]:
-        return self.board.white_cells()

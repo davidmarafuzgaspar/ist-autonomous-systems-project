@@ -3,7 +3,33 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from .board import Point2D
+from .board import CrossBoard, Point2D
+
+OBSTACLE_SIZE_M = 0.08
+
+
+def obstacle_at_crossing(name: str, center: Point2D) -> "RectangleObstacle":
+    return RectangleObstacle(
+        name=name,
+        center_x_m=center.x,
+        center_y_m=center.y,
+        width_m=OBSTACLE_SIZE_M,
+        height_m=OBSTACLE_SIZE_M,
+    )
+
+
+def snap_obstacles_to_board(
+    obstacles: list["RectangleObstacle"],
+    board: CrossBoard,
+) -> list["RectangleObstacle"]:
+    by_key: dict[tuple[float, float], RectangleObstacle] = {}
+    for obstacle in obstacles:
+        junction = board.nearest_crossing(obstacle.center_x_m, obstacle.center_y_m)
+        if junction is None:
+            continue
+        key = board.crossing_key(junction)
+        by_key[key] = obstacle_at_crossing(obstacle.name, junction)
+    return list(by_key.values())
 
 
 @dataclass(frozen=True)

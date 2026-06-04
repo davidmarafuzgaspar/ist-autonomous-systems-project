@@ -1,5 +1,3 @@
-"""Tk viewer: step through VI, tune rewards and update rule, change world."""
-
 from __future__ import annotations
 
 import math
@@ -121,7 +119,6 @@ class InteractiveValueIterationViewer:
         )
 
     def run(self) -> bool:
-        """Block until close. True if Change world was pressed."""
         self.change_world_requested = False
         self.window.mainloop()
         return self.change_world_requested
