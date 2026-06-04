@@ -304,7 +304,7 @@ class InteractiveValueIterationViewer:
         while not self.converged and self.iteration < self.max_iterations:
             self._on_step()
             self.window.update_idletasks()
-        self.time_label.config(text=f"Time: {elapsed_ms:.0f} ms ({iters_done} it)")
+        self.time_label.config(text=f"Time: {elapsed_ms:.0f} ms")
 
     def _on_reset(self) -> None:
         self.values = self.vi.initial_values()
