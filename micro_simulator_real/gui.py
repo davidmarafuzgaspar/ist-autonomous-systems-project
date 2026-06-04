@@ -27,6 +27,7 @@ BOARD = "#fafafa"
 LINE = "#d4d4d4"
 CELL_OBS = "#6b7280"
 CELL_GOAL = "#4a9eff"
+CELL_START = "#22c55e"
 POLICY = "#4a9eff"
 ROBOT = "#e91e63"
 PATH_OUTLINE = "#22c55e"
@@ -103,13 +104,18 @@ def _draw_grid(
     rows: int,
     cols: int,
     grid: list[list[int]],
-    robot: tuple[int, int, str] | None,
+    start: tuple[int, int],
     goal: tuple[int, int],
+    robot: tuple[int, int, str] | None,
     trail: list[tuple[int, int, str]],
     policy_fn: Callable[[int, int, Heading], int | None] | None,
     policy_heading: Heading,
     path_cells: set[tuple[int, int]],
     size_px: int,
+    show_robot: bool = True,
+    show_trail: bool = False,
+    show_path: bool = False,
+    mark_start_goal: bool = False,
 ) -> None:
     canvas.delete("all")
     x0, y0, cell = _geom(size_px, rows, cols)
@@ -126,7 +132,7 @@ def _draw_grid(
         py = y0 + (r + 0.5) * cell
         canvas.create_line(x0, py, x0 + cell * cols, py, fill=LINE, width=lw)
 
-    if len(trail) >= 2:
+    if show_trail and len(trail) >= 2:
         pts: list[float] = []
         for r, c, _ in trail:
             px, py = _cell_center(size_px, rows, cols, r, c)
@@ -137,14 +143,17 @@ def _draw_grid(
         for col in range(cols):
             x1, y1 = x0 + col * cell, y0 + row * cell
             x2, y2 = x1 + cell, y1 + cell
-            is_robot = robot and (row, col) == (robot[0], robot[1])
+            is_robot = show_robot and robot and (row, col) == (robot[0], robot[1])
             is_goal = (row, col) == goal
+            is_start = (row, col) == start
             is_obs = grid[row][col] == OBSTACLE
 
             if is_robot:
                 fill = ROBOT
-            elif is_goal:
+            elif is_goal and mark_start_goal:
                 fill = CELL_GOAL
+            elif is_start and mark_start_goal and not is_robot:
+                fill = CELL_START
             elif is_obs:
                 fill = CELL_OBS
             else:
@@ -152,7 +161,7 @@ def _draw_grid(
             if fill:
                 canvas.create_rectangle(x1, y1, x2, y2, fill=fill, outline="")
 
-            if (row, col) in path_cells and not is_goal and not is_obs:
+            if show_path and (row, col) in path_cells and not is_goal and not is_obs:
                 canvas.create_rectangle(x1, y1, x2, y2, outline=PATH_OUTLINE, width=2)
 
             if is_robot:
@@ -163,7 +172,12 @@ def _draw_grid(
                     cx, cy, cx + ux * cell * 0.28, cy + uy * cell * 0.28,
                     fill="#fff", width=2,
                 )
-            elif is_goal:
+            elif mark_start_goal and is_goal:
+                canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text="G", fill="#fff", font=FONT_BOLD)
+            elif mark_start_goal and is_start:
+                canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text="S", fill="#fff", font=FONT_BOLD)
+            elif is_goal and not mark_start_goal:
+                canvas.create_rectangle(x1, y1, x2, y2, fill=CELL_GOAL, outline="")
                 canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text="G", fill="#fff", font=FONT_BOLD)
 
             if policy_fn and not is_obs and not is_goal:
@@ -318,13 +332,15 @@ class MapSetupDialog:
             rows=self._rows,
             cols=self._cols,
             grid=self._grid,
-            robot=(self._start[0], self._start[1], self.heading_var.get()),
+            start=self._start,
             goal=self._goal,
+            robot=(self._start[0], self._start[1], self.heading_var.get()),
             trail=[],
             policy_fn=None,
             policy_heading=Heading.S,
             path_cells=set(),
             size_px=self._canvas_px,
+            mark_start_goal=True,
         )
 
 
@@ -336,11 +352,15 @@ class RealRuntimeViewer:
     def __init__(self, sim: RealRuntimeSim) -> None:
         self.sim = sim
         self.change_world_requested = False
-        self._canvas_px = 640
+        self._main_px = 600
+        self._policy_px = 300
+        self._sidebar_px = 340
 
         self.window = tk.Tk()
         self.window.title("Policy runtime")
         _setup_fonts(self.window)
+        self.window.minsize(1000, 820)
+        self.window.geometry("1040x860")
         self.policy_heading_var = tk.StringVar(
             master=self.window, value=sim.robot.heading.name,
         )
@@ -350,51 +370,55 @@ class RealRuntimeViewer:
 
         left = tk.Frame(body, bg=BG)
         left.pack(side=tk.LEFT, fill="both", expand=True)
-        _label(left, "Known map · blue arrows = π for heading below", muted=True).pack(anchor="w")
-        self.canvas = tk.Canvas(
-            left, width=self._canvas_px, height=self._canvas_px,
+        _label(left, "Execution — robot, trail, greedy path (atual pose)", muted=True).pack(anchor="w")
+        self.main_canvas = tk.Canvas(
+            left, width=self._main_px, height=self._main_px,
             bg=CANVAS_BG, highlightthickness=0,
         )
-        self.canvas.pack()
-        self.canvas.bind("<Button-1>", self._on_canvas_click)
+        self.main_canvas.pack()
+        self.main_canvas.bind("<Button-1>", self._on_main_click)
+        self.path_label = _label(left, "", muted=True)
+        self.path_label.pack(anchor="w", pady=(4, 0))
 
-        side = tk.Frame(body, bg=BG, width=260)
-        side.pack(side=tk.RIGHT, fill="y", padx=(10, 0))
-        side.pack_propagate(False)
+        right = tk.Frame(body, bg=BG, width=self._sidebar_px)
+        right.pack(side=tk.RIGHT, fill="y", padx=(10, 0))
+        right.pack_propagate(False)
 
-        self.status = _label(side, "1) Train  2) Run / step / manual")
-        self.status.pack(anchor="w", pady=(0, 8))
+        _label(right, "Known map — π only (heading to inspect)", muted=True).pack(anchor="w")
+        self.policy_canvas = tk.Canvas(
+            right, width=self._policy_px, height=self._policy_px,
+            bg=CANVAS_BG, highlightthickness=0,
+        )
+        self.policy_canvas.pack(pady=(0, 6))
 
-        _button(side, "Train", self._on_train, primary=True).pack(fill="x", pady=2)
-
-        _label(side, "Policy on grid (heading)", muted=True).pack(anchor="w", pady=(8, 0))
-        ph = tk.Frame(side, bg=BG)
+        _label(right, "Policy view heading:", muted=True).pack(anchor="w")
+        ph = tk.Frame(right, bg=BG)
         ph.pack(anchor="w")
         for h in ("N", "E", "S", "W"):
             tk.Radiobutton(
                 ph, text=h, variable=self.policy_heading_var, value=h,
                 command=self._redraw, bg=BG, fg=FG, selectcolor=BG2,
             ).pack(side=tk.LEFT, padx=3)
-        _button(ph, "↻ robot", self._sync_heading_to_robot).pack(side=tk.LEFT, padx=4)
-        self.path_label = _label(side, "", muted=True)
-        self.path_label.pack(anchor="w")
+        self.status = _label(right, "1) Train  2) Run / step / manual")
+        self.status.pack(anchor="w", pady=(0, 8))
 
-        _label(side, "Execute", muted=True).pack(anchor="w", pady=(8, 0))
-        _button(side, "Auto run (start → goal)", self._on_auto_run, primary=True).pack(fill="x", pady=2)
-        _button(side, "Back to start", self._on_reset).pack(fill="x", pady=2)
+        _button(right, "Train", self._on_train, primary=True).pack(fill="x", pady=2)
 
-        _label(side, "Step", muted=True).pack(anchor="w", pady=(8, 0))
-        _button(side, "Policy turn", self._on_turn).pack(fill="x", pady=2)
-        _button(side, "Move forward", self._on_forward).pack(fill="x", pady=2)
+        _label(right, "Execute", muted=True).pack(anchor="w", pady=(8, 0))
+        _button(right, "Auto run (start → goal)", self._on_auto_run, primary=True).pack(fill="x", pady=2)
+        _button(right, "Back to start", self._on_reset).pack(fill="x", pady=2)
 
-        _label(side, "Manual", muted=True).pack(anchor="w", pady=(8, 0))
-        tr = tk.Frame(side, bg=BG)
+        _label(right, "Step (one π action: turn or forward)", muted=True).pack(anchor="w", pady=(8, 0))
+        _button(right, "Next step", self._on_next_step).pack(fill="x", pady=2)
+
+        _label(right, "Manual (left map)", muted=True).pack(anchor="w", pady=(8, 0))
+        tr = tk.Frame(right, bg=BG)
         tr.pack(anchor="w")
         for h in ("N", "E", "S", "W"):
             _button(tr, h, lambda hd=h: self._manual_heading(hd)).pack(side=tk.LEFT, padx=2)
-        _label(side, "Or click adjacent cell on map", muted=True).pack(anchor="w")
+        _label(right, "Or click adjacent cell on execution map", muted=True).pack(anchor="w")
 
-        _button(side, "Change world", self._on_change_world).pack(fill="x", pady=(12, 0))
+        _button(right, "Change world", self._on_change_world).pack(fill="x", pady=(12, 0))
 
         self._redraw()
 
@@ -402,10 +426,6 @@ class RealRuntimeViewer:
         self.change_world_requested = False
         self.window.mainloop()
         return self.change_world_requested
-
-    def _sync_heading_to_robot(self) -> None:
-        self.policy_heading_var.set(self.sim.robot.heading.name)
-        self._redraw()
 
     def _policy_fn(self, row: int, col: int, heading: Heading) -> int | None:
         return self.sim.policy_action(row, col, heading)
@@ -419,19 +439,47 @@ class RealRuntimeViewer:
     def _redraw(self) -> None:
         ph = Heading.from_str(self.policy_heading_var.get())
         robot = (self.sim.robot.row, self.sim.robot.col, self.sim.robot.heading.name)
+        path_cells = self._path_cells()
+
+        start = self.sim.scenario.start
+        goal = self.sim.scenario.goal
 
         _draw_grid(
-            self.canvas,
+            self.main_canvas,
             rows=self.sim.rows,
             cols=self.sim.cols,
             grid=self.sim.scenario.grid,
+            start=start,
+            goal=goal,
             robot=robot,
-            goal=self.sim.scenario.goal,
             trail=self.sim.trail,
+            policy_fn=None,
+            policy_heading=ph,
+            path_cells=path_cells,
+            size_px=self._main_px,
+            show_robot=True,
+            show_trail=True,
+            show_path=True,
+            mark_start_goal=False,
+        )
+
+        _draw_grid(
+            self.policy_canvas,
+            rows=self.sim.rows,
+            cols=self.sim.cols,
+            grid=self.sim.scenario.grid,
+            start=start,
+            goal=goal,
+            robot=None,
+            trail=[],
             policy_fn=self._policy_fn if self.sim.trained else None,
             policy_heading=ph,
-            path_cells=self._path_cells(),
-            size_px=self._canvas_px,
+            path_cells=set(),
+            size_px=self._policy_px,
+            show_robot=False,
+            show_trail=False,
+            show_path=False,
+            mark_start_goal=True,
         )
 
         if self.sim.trained:
@@ -450,22 +498,19 @@ class RealRuntimeViewer:
                     text=f"{self.sim.robot.pose_str()} · here π={ACTION_LABELS[act]}",
                 )
         else:
-            self.path_label.config(text="Train to show π on the grid.")
+            self.path_label.config(text="Greedy path: train first.")
 
     def _on_train(self) -> None:
         self.sim.train()
-        self.policy_heading_var.set(self.sim.robot.heading.name)
-        self.status.config(text="Trained. Auto run, step, or manual.")
+        self.status.config(text="Trained. Auto run, Next step, or manual on left map.")
         self._redraw()
 
     def _on_auto_run(self) -> None:
         if not self.sim.trained:
             self.sim.train()
         self.sim.reset_to_start()
-        self.policy_heading_var.set(self.sim.robot.heading.name)
         for _ in range(AUTO_MISSION_MAX_STEPS):
             msg, done = self.sim.execute_policy_cycle()
-            self.policy_heading_var.set(self.sim.robot.heading.name)
             self._redraw()
             self.window.update_idletasks()
             time.sleep(0.1)
@@ -476,35 +521,30 @@ class RealRuntimeViewer:
                 break
         self._redraw()
 
-    def _on_turn(self) -> None:
-        self.status.config(text=self.sim.apply_policy_turn())
-        self.policy_heading_var.set(self.sim.robot.heading.name)
-        self._redraw()
-
-    def _on_forward(self) -> None:
-        self.status.config(text=self.sim.move_forward())
-        self.policy_heading_var.set(self.sim.robot.heading.name)
+    def _on_next_step(self) -> None:
+        if not self.sim.trained:
+            self.status.config(text="Train first.")
+            return
+        msg, done = self.sim.execute_policy_cycle()
+        self.status.config(text=msg if not done else f"Done: {msg}")
         self._redraw()
 
     def _manual_heading(self, name: str) -> None:
         self.sim.set_heading(Heading.from_str(name))
-        self.policy_heading_var.set(name)
         self._redraw()
 
-    def _on_canvas_click(self, event: tk.Event) -> None:
+    def _on_main_click(self, event: tk.Event) -> None:
         if not self.sim.trained:
             return
-        x0, y0, cell_px = _geom(self._canvas_px, self.sim.rows, self.sim.cols)
+        x0, y0, cell_px = _geom(self._main_px, self.sim.rows, self.sim.cols)
         col = int((event.x - x0) / cell_px)
         row = int((event.y - y0) / cell_px)
         if 0 <= row < self.sim.rows and 0 <= col < self.sim.cols:
             self.status.config(text=self.sim.manual_goto_adjacent(row, col))
-            self.policy_heading_var.set(self.sim.robot.heading.name)
             self._redraw()
 
     def _on_reset(self) -> None:
         self.sim.reset_to_start()
-        self.policy_heading_var.set(self.sim.robot.heading.name)
         self.status.config(text="Back to start.")
         self._redraw()
 
