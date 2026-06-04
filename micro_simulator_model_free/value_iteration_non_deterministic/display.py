@@ -1,8 +1,8 @@
-"""Terminal output for layout, values and aggregated policy."""
+"""Terminal rendering of grid layout, per-cell max V, and aggregated policy."""
 
 from __future__ import annotations
 
-from .world import GridCell, Heading, IntersectionWorld, OrientedAction
+from .world import GridAction, GridCell, Heading, IntersectionWorld
 
 OBSTACLE_GLYPH = "##"
 GOAL_GLYPH = "GG"
@@ -16,15 +16,19 @@ HEADING_ARROWS: dict[Heading, str] = {
     Heading.W: "<",
 }
 
+ACTION_GLYPHS: dict[GridAction, str] = {
+    GridAction.STRAIGHT: "S",
+    GridAction.TURN_RIGHT: "R",
+    GridAction.TURN_LEFT: "L",
+    GridAction.TURN_AROUND: "A",
+}
 
-def oriented_policy_glyph(action: OrientedAction, draw_heading: Heading) -> str:
-    if action == OrientedAction.FORWARD:
-        return HEADING_ARROWS[draw_heading]
-    if action == OrientedAction.TURN_LEFT:
-        return "\u21ba"
-    if action == OrientedAction.TURN_RIGHT:
-        return "\u21bb"
-    return action.value
+
+def policy_glyph(action: GridAction, draw_heading: Heading, world: IntersectionWorld) -> str:
+    if action == GridAction.STRAIGHT:
+        move_h = world.movement_heading_for_action(draw_heading, action)
+        return HEADING_ARROWS[move_h]
+    return ACTION_GLYPHS[action]
 
 
 def print_layout(world: IntersectionWorld) -> None:
@@ -43,11 +47,15 @@ def print_layout(world: IntersectionWorld) -> None:
                 cells.append(EMPTY_GLYPH)
         print(" ".join(cells))
     print(_separator(world))
+    print(
+        f"start=({world.start.row},{world.start.col},{world.start_heading.name})  "
+        f"goal=({world.goal.row},{world.goal.col})"
+    )
 
 
 def print_policy(
     world: IntersectionWorld,
-    policy: dict[GridCell, OrientedAction | None],
+    policy: dict[GridCell, GridAction | None],
     draw_heading: dict[GridCell, Heading] | None = None,
 ) -> None:
     print(_separator(world))
@@ -63,7 +71,7 @@ def print_policy(
                 act = policy[cell]
                 assert act is not None
                 h = (draw_heading or {}).get(cell, Heading.N)
-                cells.append(f" {oriented_policy_glyph(act, h)} ")
+                cells.append(f" {policy_glyph(act, h, world)} ")
             else:
                 cells.append(EMPTY_GLYPH)
         print(" ".join(cells))

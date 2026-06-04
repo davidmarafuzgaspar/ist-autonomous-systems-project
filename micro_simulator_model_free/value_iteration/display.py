@@ -1,4 +1,4 @@
-"""ASCII layout, values, and policy."""
+"""Terminal rendering of grid layout, per-cell max V, and aggregated policy."""
 
 from __future__ import annotations
 

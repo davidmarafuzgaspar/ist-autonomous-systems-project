@@ -21,7 +21,6 @@ MODE_OBSTACLE = "obstacle"
 MODE_START = "start"
 MODE_GOAL = "goal"
 
-# Canvas axes: row 0 at top; matches grid row/col deltas for N,E,S,W.
 _HEADING_CANVAS_VEC: dict[str, tuple[float, float]] = {
     "N": (0.0, -1.0),
     "E": (1.0, 0.0),
@@ -46,9 +45,9 @@ class MapSetupDialog:
             self._start = initial_world.start
             self._goal = initial_world.goal
             self._initial_heading = initial_world.start_heading.name
-            self._reward_defaults = initial_world
+            self._world_defaults = initial_world
         else:
-            self._reward_defaults = None
+            self._world_defaults = None
             self._rows = initial_rows
             self._cols = initial_cols
             self._grid = empty_grid(self._rows, self._cols)
@@ -169,8 +168,8 @@ class MapSetupDialog:
             messagebox.showerror("Error", "Start and goal must differ.")
             return
         kwargs: dict = {}
-        if self._reward_defaults is not None:
-            ref = self._reward_defaults
+        if self._world_defaults is not None:
+            ref = self._world_defaults
             kwargs = {
                 "goal_reward": ref.goal_reward,
                 "illegal_move_reward": ref.illegal_move_reward,
@@ -178,6 +177,9 @@ class MapSetupDialog:
                 "reward_turn_right": ref.reward_turn_right,
                 "reward_turn_left": ref.reward_turn_left,
                 "reward_turn_around": ref.reward_turn_around,
+                "slip_prob_intended": ref.slip_prob_intended,
+                "slip_prob_left": ref.slip_prob_left,
+                "slip_prob_right": ref.slip_prob_right,
             }
         self._result = IntersectionWorld(
             grid=[list(row) for row in self._grid],

@@ -1,66 +1,72 @@
-# Value iteration
+# Value iteration (deterministic)
 
-Discrete MDP on an intersection grid with orientation. Map setup → interactive Bellman sweeps → optional terminal rollout.
+Interactive **value iteration** on an oriented grid MDP: configure the map, step through Bellman updates, then inspect \(V^*\) and \(\pi^*\).
+
+## Overview
+
+| Stage | Tool |
+|-------|------|
+| 1. Map | `grid_setup` — rows/cols, obstacles, start, goal, initial heading |
+| 2. Solve | `iteration_viewer` — step or run VI; edit \(\gamma\) and rewards |
+| 3. Batch (optional) | `main --final` — full solve and terminal rollout without GUI |
 
 ## Model
 
-**State** \(s = (r, c, h)\): cell \((r,c)\), heading \(h \in \{N,E,S,W\}\) (row 0 is north).
+**State** \(s = (r, c, h)\): grid cell \((r,c)\), heading \(h \in \{N,E,S,W\}\) (row 0 is north).
 
-**Actions** \(a \in \{\text{straight}, \text{turn R}, \text{turn L}, \text{turn A}\}\):
+**Actions** (turn, then one forward step along the heading after the turn):
 
-1. Apply the turn (if any) to obtain \(h'\).
-2. Attempt one step along \(h'\) to \((r', c')\).
+| Action | Effect |
+|--------|--------|
+| Straight | No turn |
+| Turn right / left | Quarter turn |
+| Turn around | Half turn |
 
-**Transitions** (deterministic):
+**Transitions** are deterministic:
 
-- If \((r',c')\) is blocked or out of bounds: stay at \((r,c,h)\), reward \(r_{\text{illegal}}\).
-- If \((r',c') =\) goal: move to \((r',c',h')\), reward \(r_{\text{goal}}\), episode ends.
-- Otherwise: move to \((r',c',h')\), reward \(R(a)\) (step / turn cost).
+- Blocked or out-of-bounds forward step → remain at \((r,c,h)\), reward \(r_{\text{illegal}}\).
+- Enter goal → \((r',c',h')\), reward \(r_{\text{goal}}\), terminal.
+- Otherwise → move to \((r',c',h')\), action cost \(R(a)\).
 
-**Terminal states:** all poses at the goal cell; \(V(\text{goal}) = 0\).
+Goal poses are terminal with \(V = 0\).
 
-## Rewards (defaults)
+## Default rewards
 
-| Symbol | Default | Meaning |
-|--------|---------|---------|
-| \(\gamma\) | 0.85 | Discount |
-| \(r_{\text{goal}}\) | +100 | Enter goal |
-| \(r_{\text{illegal}}\) | −50 | Blocked forward step |
-| \(R(\text{straight})\) | −1 | Forward move |
-| \(R(\text{turn R/L})\) | −5 | Quarter turn |
-| \(R(\text{turn A})\) | −10 | Half turn |
+| Parameter | Default |
+|-----------|---------|
+| \(\gamma\) | 0.85 |
+| \(r_{\text{goal}}\) | +100 |
+| \(r_{\text{illegal}}\) | −50 |
+| Straight | −1 |
+| Turn right / left | −5 each |
+| Turn around | −10 |
 
-Editable in the VI viewer (**Apply rewards**).
+Editable in the viewer via **Apply rewards**.
 
 ## Bellman optimality
 
 \[
-V^*(s) = \max_a \Big[ R(s,a) + \gamma \sum_{s'} P(s'|s,a)\, V^*(s') \Big]
-\]
-
-With deterministic \(s' = f(s,a)\):
-
-\[
-Q(s,a) = R(s,a) + \gamma\, V^*\big(f(s,a)\big), \qquad
+V^*(s) = \max_a \Big[ R(s,a) + \gamma \sum_{s'} P(s'|s,a)\, V^*(s') \Big],
+\qquad
 \pi^*(s) = \arg\max_a Q(s,a).
 \]
 
-One backup for non-terminal \(s\):
+Here \(P(s'|s,a) = 1\) on the single successor \(s' = f(s,a)\). One iteration:
 
 \[
-V_{k+1}(s) \leftarrow \max_a Q_k(s,a), \quad Q_k(s,a) = R(s,a) + \gamma\, V_k(f(s,a)).
+V_{k+1}(s) \leftarrow \max_a \bigl[ R(s,a) + \gamma V_k(f(s,a)) \bigr].
 \]
 
-**Stop** when \(\max_s |V_{k+1}(s) - V_k(s)| < \theta\) (default \(\theta = 10^{-6}\)) or after 200 iterations.
+Stop when \(\max_s |V_{k+1}(s) - V_k(s)| < \theta\) (default \(10^{-6}\)) or after 200 iterations.
 
 ## Update rules (viewer)
 
-| Mode | Sweep |
-|------|--------|
-| **Gauss–Seidel** | Uses \(V_{k+1}\) as soon as each state is updated (in-place). |
-| **Jacobi** | Computes all backups from a frozen \(V_k\), then commits. |
+| Mode | Behaviour |
+|------|-----------|
+| **Gauss–Seidel** | In-place updates; each backup uses the latest \(V_{k+1}\) where available |
+| **Jacobi** | All backups read from a snapshot \(V_k\), then commit |
 
-Both converge to the same \(V^*\) and \(\pi^*\); intermediate values and iteration counts differ.
+Both methods converge to the same \(V^*\) and \(\pi^*\); per-iteration values and iteration counts may differ.
 
 ## Usage
 
@@ -69,12 +75,23 @@ cd micro_simulator_model_free
 python -m value_iteration.main
 ```
 
-| Flag | Effect |
-|------|--------|
-| `--final` | Terminal: solve, print V\*/π\*, rollout |
-| `--skip-setup` | Skip map editor |
+| Flag | Description |
+|------|-------------|
+| `--final` | Solve in the terminal; print layout, \(V^*\), policy, rollout |
+| `--skip-setup` | Skip the map editor |
 | `--rows`, `--cols` | Grid size when setup is skipped (default 3×5) |
 
-**Flow:** Map setup → VI viewer → **Change world** (reopens setup with the last map).
+**GUI flow:** Map setup → VI viewer → **Change world** (reopens setup with the previous configuration).
 
-Grid axes: 2–12.
+Grid size per axis: 2–12 cells.
+
+## Module reference
+
+| File | Role |
+|------|------|
+| `world.py` | `IntersectionWorld`, `simulate_step`, Bellman \(Q\) |
+| `value_iteration.py` | VI sweeps (Jacobi / Gauss–Seidel) |
+| `main.py` | CLI |
+| `grid_setup.py` | Initial map dialog |
+| `iteration_viewer.py` | Interactive canvas + sidebar |
+| `display.py` | ASCII map / values / policy |

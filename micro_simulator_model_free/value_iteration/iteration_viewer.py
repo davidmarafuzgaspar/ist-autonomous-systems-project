@@ -1,4 +1,4 @@
-"""Interactive VI viewer."""
+"""Tk viewer: step through VI, tune rewards and update rule, change world."""
 
 from __future__ import annotations
 

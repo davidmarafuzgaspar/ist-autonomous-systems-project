@@ -1,4 +1,4 @@
-"""Bellman value iteration."""
+"""Bellman value iteration with Jacobi or Gauss–Seidel state sweeps."""
 
 from __future__ import annotations
 
@@ -24,13 +24,15 @@ class ValueIterationResult:
 
 
 class ValueIteration:
+    """Tabular VI. Use ``synchronous=True`` for Jacobi, ``False`` for Gauss–Seidel."""
+
     def __init__(
         self,
         world: IntersectionWorld,
         gamma: float = GAMMA_DEFAULT,
         theta: float = THETA_DEFAULT,
         max_iterations: int = MAX_ITERATIONS_DEFAULT,
-        synchronous: bool = False,  # False: Gauss–Seidel; True: Jacobi
+        synchronous: bool = False,
     ) -> None:
         self.world = world
         self.gamma = gamma

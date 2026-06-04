@@ -1,4 +1,4 @@
-"""Oriented grid MDP."""
+"""Oriented grid MDP: state (cell, heading), turn-then-forward dynamics, configurable rewards."""
 
 from __future__ import annotations
 
@@ -106,7 +106,12 @@ def _clone_grid(grid: Sequence[Sequence[int]]) -> list[list[int]]:
 
 @dataclass
 class IntersectionWorld:
-    """State (cell, heading); turn then forward step; illegal moves are self-loops."""
+    """
+    Grid world for value iteration.
+
+    Each step applies a turn (optional), then a deterministic forward move.
+    Illegal moves leave pose unchanged and incur ``illegal_move_reward``.
+    """
 
     grid: list[list[int]] = field(default_factory=lambda: _clone_grid(DEFAULT_GRID))
     start: GridCell = field(default_factory=lambda: GridCell(DEFAULT_START_ROW, DEFAULT_START_COL))

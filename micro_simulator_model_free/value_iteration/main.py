@@ -1,4 +1,4 @@
-"""CLI: map setup, interactive VI, or batch solve."""
+"""Entry point: map setup, interactive viewer, or ``--final`` batch solve and rollout."""
 
 from __future__ import annotations
 

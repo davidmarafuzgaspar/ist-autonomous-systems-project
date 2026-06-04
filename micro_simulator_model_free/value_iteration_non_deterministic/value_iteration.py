@@ -1,28 +1,37 @@
-"""Bellman value iteration on the oriented intersection MDP."""
+"""Value iteration using expected Q-values over the slip distribution."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .world import IntersectionWorld, OrientedAction, PoseState
+from .world import (
+    GAMMA_DEFAULT,
+    MAX_ITERATIONS_DEFAULT,
+    THETA_DEFAULT,
+    GridAction,
+    IntersectionWorld,
+    PoseState,
+)
 
 
 @dataclass
 class ValueIterationResult:
     values: dict[PoseState, float]
-    policy: dict[PoseState, OrientedAction | None]
+    policy: dict[PoseState, GridAction | None]
     iterations: int
     final_delta: float
     converged: bool
 
 
 class ValueIteration:
+    """Tabular VI over expected Q (slip). ``synchronous``: Jacobi vs Gauss–Seidel."""
+
     def __init__(
         self,
         world: IntersectionWorld,
-        gamma: float = 0.85,
-        theta: float = 1e-3,
-        max_iterations: int = 1000,
+        gamma: float = GAMMA_DEFAULT,
+        theta: float = THETA_DEFAULT,
+        max_iterations: int = MAX_ITERATIONS_DEFAULT,
         synchronous: bool = False,
     ) -> None:
         self.world = world
@@ -34,7 +43,7 @@ class ValueIteration:
     def _action_value(
         self,
         state: PoseState,
-        action: OrientedAction,
+        action: GridAction,
         values: dict[PoseState, float],
     ) -> float:
         return self.world.bellman_action_value(state, action, values, self.gamma)
@@ -69,8 +78,8 @@ class ValueIteration:
             delta = max(delta, abs(new_value - old_value))
         return new_values, delta
 
-    def greedy_policy(self, values: dict[PoseState, float]) -> dict[PoseState, OrientedAction | None]:
-        policy: dict[PoseState, OrientedAction | None] = {}
+    def greedy_policy(self, values: dict[PoseState, float]) -> dict[PoseState, GridAction | None]:
+        policy: dict[PoseState, GridAction | None] = {}
         actions = self.world.iter_actions()
         for state in self.world.get_all_states():
             if self.world.is_terminal(state):
