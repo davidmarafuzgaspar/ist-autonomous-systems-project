@@ -479,16 +479,9 @@ class QLearningViewer:
         return self.change_world_requested
 
     def _build_sidebar(self) -> None:
-        title = ui.label(self.sidebar, "Model-free (solver)")
+        title = ui.label(self.sidebar, "Model-free")
         title.configure(font=ui.FONT_TITLE)
-        title.pack(anchor="w", pady=(0, 4))
-
-        ui.label(
-            self.sidebar,
-            "Train with Next step / Run episode. "
-            "Pink dot = robot during training; pink trail = current episode.",
-            muted=True,
-        ).pack(anchor="w", pady=(0, 8))
+        title.pack(anchor="w", pady=(0, 8))
 
         self.ep_label = ui.label(self.sidebar, "Episodes: 0 / not started")
         self.ep_label.pack(anchor="w")
@@ -505,8 +498,8 @@ class QLearningViewer:
         self.last_label.pack(anchor="w", pady=(0, 8))
 
         ui.button(self.sidebar, "Next step", self._on_step).pack(fill="x", pady=2)
-        ui.button(self.sidebar, "Run episode", self._on_run_episode, primary=True).pack(fill="x", pady=2)
-        ui.button(self.sidebar, "Train all episodes", self._on_train_all).pack(fill="x", pady=2)
+        ui.button(self.sidebar, "Run episode", self._on_run_episode).pack(fill="x", pady=2)
+        ui.button(self.sidebar, "Train all episodes", self._on_train_all, primary=True).pack(fill="x", pady=2)
         ui.button(self.sidebar, "Show policy (text)", self._on_show_policy).pack(fill="x", pady=2)
         ui.button(self.sidebar, "Reset Q-table", self._on_reset_q).pack(fill="x", pady=2)
 
@@ -596,7 +589,7 @@ class QLearningViewer:
 
     def _build_parameter_panel(self) -> None:
         ui.line(self.sidebar)
-        ui.label(self.sidebar, "Parameters (solver defaults)", muted=True).pack(anchor="w")
+        ui.label(self.sidebar, "Parameters", muted=True).pack(anchor="w")
 
         fields = [
             ("alpha", str(ALPHA_DEFAULT)),
@@ -670,7 +663,7 @@ class QLearningViewer:
         self.trainer.run_all_episodes()
         self.trail = []
         self.status_label.config(
-            text=f"Training done ({remaining} episodes, like solver.train)",
+            text=f"Training done ({remaining} episodes)",
             fg=ui.ACCENT,
         )
         self._refresh_stats()
@@ -706,7 +699,7 @@ class QLearningViewer:
         self.trainer.reset_training()
         self.policy_final_ready = False
         self.trail = []
-        self.status_label.config(text="Q reset — press Next step or Run episode", fg=ui.MUTED)
+        self.status_label.config(text="Q reset - press Next step or Run episode", fg=ui.MUTED)
         self.last_label.config(text="")
         self._refresh_stats()
         self._update_episode_labels()
@@ -778,11 +771,11 @@ class QLearningViewer:
         done = self.trainer.total_episodes_finished
         total = self.trainer.num_episodes
         if self.trainer.training_finished():
-            text = f"Episodes: {done}/{total} — training complete"
+            text = f"Episodes: {done}/{total} -> training complete"
         elif not self.trainer.episode_done and self.trainer.episode > 0:
-            text = f"Episodes: {done}/{total} done — running #{self.trainer.episode}"
+            text = f"Episodes: {done}/{total} done -> running #{self.trainer.episode}"
         elif done == 0:
-            text = f"Episodes: 0/{total} — not started"
+            text = f"Episodes: 0/{total} -> not started"
         else:
             text = f"Episodes: {done}/{total} done"
         self.ep_label.config(text=text)
