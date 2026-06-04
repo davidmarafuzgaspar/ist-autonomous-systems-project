@@ -31,7 +31,7 @@ class MapSetupDialog:
     def __init__(
         self,
         *,
-        initial_rows: int = 3,
+        initial_rows: int = 5,
         initial_cols: int = 5,
         initial_world: IntersectionWorld | None = None,
     ) -> None:
@@ -226,7 +226,7 @@ class MapSetupDialog:
 
 def run_map_setup(
     *,
-    initial_rows: int = 3,
+    initial_rows: int = 5,
     initial_cols: int = 5,
     initial_world: IntersectionWorld | None = None,
 ) -> IntersectionWorld | None:

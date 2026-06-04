@@ -22,6 +22,26 @@ ACTION_GLYPHS = {
     GridAction.TURN_AROUND: "A",
 }
 
+HEADING_ARROW_GLYPHS: dict[Heading, str] = {
+    Heading.N: "↑",
+    Heading.E: "→",
+    Heading.S: "↓",
+    Heading.W: "←",
+}
+
+
+def policy_arrow_glyph(view_heading: Heading, action: GridAction) -> str:
+    """Same semantics as the canvas arrows: straight = move dir.; turn = new facing."""
+    if action == GridAction.STRAIGHT:
+        move_h = view_heading
+    elif action == GridAction.TURN_RIGHT:
+        move_h = view_heading.turn_right()
+    elif action == GridAction.TURN_LEFT:
+        move_h = view_heading.turn_left()
+    else:
+        move_h = view_heading.turn_right().turn_right()
+    return HEADING_ARROW_GLYPHS[move_h]
+
 
 @dataclass(frozen=True)
 class StepResult:
@@ -258,9 +278,9 @@ class QLearningTrainer:
         """ASCII policy (like ``solver.Solver.format_policy_report``)."""
         headings = [heading] if heading is not None else list(Heading)
         title = (
-            f"Policy (greedy Q) — heading {heading.name}:"
+            f"Policy (greedy Q) — heading {heading.name} (↑→↓← per cell):"
             if heading is not None
-            else "Policy (greedy Q) — S/R/L/A per cell:"
+            else "Policy (greedy Q) — ↑→↓← per cell (move / facing after turn):"
         )
         lines: list[str] = [title]
         for h in headings:
@@ -276,6 +296,6 @@ class QLearningTrainer:
                         cells.append("#")
                     else:
                         act = self.greedy_action(PoseState(cell, heading))
-                        cells.append(ACTION_GLYPHS[act])
+                        cells.append(policy_arrow_glyph(heading, act))
                 lines.append(prefix + " ".join(cells))
         return "\n".join(lines)

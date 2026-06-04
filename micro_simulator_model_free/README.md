@@ -4,12 +4,12 @@ Visualização do **model-free do `solver.py`**: o mesmo Q-learning tabular que 
 
 ## O que estás a ver
 
-1. **Map setup** — defines grelha, início, objetivo (como escolher o mapa antes de treinar).
+1. **Map setup** — grelha **5×5** por defeito (start canto superior-esquerdo, goal canto inferior-direito); podes redimensionar antes de treinar.
 2. **Janela principal** — cada **episódio** o agente começa no verde, tenta chegar ao azul:
    - **Next step** — um passo do loop do solver (escolher ação → simular → atualizar Q).
    - **Run episode** — um episódio completo animado (trail rosa).
    - **Train all episodes** — corre os episódios restantes de uma vez (como `solver.train()` no terminal).
-   - **Show learned policy** — mapa de ações gananciosas (como `format_policy_report()` no log).
+   - **Show policy (text)** — grelha ASCII com setas ↑→↓← (igual às setas azuis na grelha).
 3. **Train all episodes** até `Episodes: 1000/1000 — training complete`. Só então a grelha mostra **max Q + setas** (para onde ir) e podes escolher **N/E/S/W**; linha verde = plano desde o start.
 4. **Show policy (text)** — mapa ASCII com **os 4 headings** (só disponível quando o treino terminou).
 

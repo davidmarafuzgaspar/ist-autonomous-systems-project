@@ -91,12 +91,20 @@ def entry(parent: tk.Misc, *, width: int = 6) -> tk.Entry:
     )
 
 
-def radio(parent: tk.Misc, text: str, variable: tk.StringVar, value: str) -> tk.Radiobutton:
+def radio(
+    parent: tk.Misc,
+    text: str,
+    variable: tk.StringVar,
+    value: str,
+    *,
+    command: Callable[[], None] | None = None,
+) -> tk.Radiobutton:
     return tk.Radiobutton(
         parent,
         text=text,
         variable=variable,
         value=value,
+        command=command,
         font=FONT,
         fg=FG,
         bg=parent.cget("bg") if parent.cget("bg") else BG,

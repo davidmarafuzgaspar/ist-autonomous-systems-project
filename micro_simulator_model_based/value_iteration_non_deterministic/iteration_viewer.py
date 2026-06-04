@@ -4,9 +4,7 @@ import time
 import tkinter as tk
 
 from . import ui_theme as ui
-from micro_simulator_model_based.value_iteration.value_iteration import rollout_greedy_policy
-
-from .value_iteration import ValueIteration
+from .value_iteration import ValueIteration, rollout_greedy_policy
 from .world import (
     GAMMA_DEFAULT,
     MAX_ITERATIONS_DEFAULT,
@@ -110,14 +108,14 @@ class InteractiveValueIterationViewer:
         return self.change_world_requested
 
     def _build_sidebar(self) -> None:
-        title = ui.label(self.sidebar, "Value Iteration")
+        title = ui.label(self.sidebar, "Value Iteration (slip)")
         title.configure(font=ui.FONT_TITLE)
         title.pack(anchor="w", pady=(0, 4))
         ui.label(
             self.sidebar,
-            "Each step updates V(s). Pick a heading: each cell shows V and best action "
-            "(S/R/L/A) if you are there facing that way. Green path = rollout from start "
-            "with that initial heading (after converge).",
+            "Each step updates expected V(s) under forward slip. Pick a heading: each cell "
+            "shows V; after converge, blue arrows = move / facing. Green path = greedy rollout "
+            "from start with that initial heading (intended branch).",
             muted=True,
         ).pack(anchor="w", pady=(0, 10))
 
@@ -165,9 +163,13 @@ class InteractiveValueIterationViewer:
         row = tk.Frame(self.sidebar, bg=ui.BG)
         row.pack(anchor="w", pady=4)
         for name in ("N", "E", "S", "W"):
-            rb = ui.radio(row, name, self.policy_heading_var, name)
-            rb.configure(command=self._on_policy_heading_changed)
-            rb.pack(side=tk.LEFT, padx=(0, 8))
+            ui.radio(
+                row,
+                name,
+                self.policy_heading_var,
+                name,
+                command=self._on_policy_heading_changed,
+            ).pack(side=tk.LEFT, padx=(0, 8))
         ui.label(
             self.sidebar,
             "Blue arrow = where to go (move dir.); turns show new facing. Change heading to compare.",
@@ -222,9 +224,13 @@ class InteractiveValueIterationViewer:
         algo = tk.Frame(self.sidebar, bg=ui.BG)
         algo.pack(anchor="w", pady=(0, 4))
         for text, val in (("Gauss-Seidel", "gauss"), ("Jacobi", "jacobi")):
-            rb = ui.radio(algo, text, self.algorithm_var, val)
-            rb.configure(command=self._on_algorithm_change)
-            rb.pack(side=tk.LEFT, padx=(0, 10))
+            ui.radio(
+                algo,
+                text,
+                self.algorithm_var,
+                val,
+                command=self._on_algorithm_change,
+            ).pack(side=tk.LEFT, padx=(0, 10))
 
     def _on_algorithm_change(self) -> None:
         self.synchronous = self.algorithm_var.get() == "jacobi"
