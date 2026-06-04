@@ -386,7 +386,7 @@ Estrutura relevante:
 - `micro_simulator_model_free/` — Q-learning tabular (grelha, Tk); ver README na pasta
 - `micro_simulator_model_based/` — value iteration determinística e com slip; ver README na pasta
 - `robot_kinematic_world/` — simulador contínuo (linha + IR, WASD); ver README na pasta
-- `micro_simulator_real/` — known/true map, VI, hidden + sense, popup replan (`solver.py`)
+- `micro_simulator_dynamic/` — known/true map, VI, hidden + sense, popup replan (`solver.py`)
 
 ### Micro-simuladores e simulador cinemático
 
@@ -396,7 +396,7 @@ Estrutura relevante:
 | `micro_simulator_model_based/value_iteration/` | VI determinística — `model.py` + `gui.py` |
 | `micro_simulator_model_based/value_iteration_non_deterministic/` | VI com slip — `model.py` + `gui.py` |
 | `robot_kinematic_world/` | Robot em grelha de cruzamentos: sensores de linha e obstáculos IR (não é ROS) |
-| `micro_simulator_real/` | Known + hidden, VI, sense, popup replan, execução manual/auto |
+| `micro_simulator_dynamic/` | Known + hidden, VI, sense, popup replan, manual/auto execution |
 
 Em cada pasta: `python run.py` (ou `python -m …` a partir da raiz do repo). Detalhes nos respetivos `README.md`.
 
