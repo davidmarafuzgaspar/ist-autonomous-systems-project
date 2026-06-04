@@ -118,7 +118,8 @@ def _draw_grid(
     show_robot: bool = True,
     show_trail: bool = False,
     show_path: bool = False,
-    mark_start_goal: bool = False,
+    mark_start: bool = False,
+    mark_goal: bool = False,
     show_hidden_cells: bool = False,
     show_obstacles: bool = True,
     line_board: bool = False,
@@ -159,9 +160,9 @@ def _draw_grid(
 
             if is_robot:
                 fill = ROBOT
-            elif is_goal and mark_start_goal:
+            elif is_goal and mark_goal:
                 fill = CELL_GOAL
-            elif is_start and mark_start_goal and not is_robot:
+            elif is_start and mark_start and not is_robot:
                 fill = CELL_START
             elif is_hidden:
                 fill = CELL_HIDDEN
@@ -183,13 +184,10 @@ def _draw_grid(
                     cx, cy, cx + ux * cell * 0.28, cy + uy * cell * 0.28,
                     fill="#fff", width=2,
                 )
-            elif mark_start_goal and is_goal:
+            elif mark_goal and is_goal:
                 canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text="G", fill="#fff", font=FONT_BOLD)
-            elif mark_start_goal and is_start:
+            elif mark_start and is_start:
                 canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text="S", fill="#fff", font=FONT_BOLD)
-            elif is_goal and not mark_start_goal:
-                canvas.create_rectangle(x1, y1, x2, y2, fill=CELL_GOAL, outline="")
-                canvas.create_text((x1 + x2) / 2, (y1 + y2) / 2, text="G", fill="#fff", font=FONT_BOLD)
 
             if policy_fn and val == FREE and (row, col) != goal and (row, col) != start:
                 act = policy_fn(row, col, policy_heading)
@@ -238,7 +236,7 @@ class MapSetupDialog:
         _label(root, "Map setup", muted=False).configure(font=FONT_TITLE)
         _label(
             root,
-            "Obstacle = known (VI). Hidden only on the execution grid (runtime).",
+            "Obstacle = known (VI). Hidden = true world only (orange); not on known map at runtime.",
             muted=True,
         ).pack(anchor="w", pady=(2, 10))
 
@@ -376,6 +374,8 @@ class MapSetupDialog:
                     fill = CELL_START
                 elif (row, col) == self._goal:
                     fill = CELL_GOAL
+                elif self._true[row][col] == HIDDEN:
+                    fill = CELL_HIDDEN
                 elif self._known[row][col] == OBSTACLE:
                     fill = CELL_OBS
                 else:
@@ -415,8 +415,6 @@ class RealRuntimeViewer:
         self.policy_heading_var = tk.StringVar(
             master=self.window, value=sim.robot.heading.name,
         )
-        self.show_hidden_var = tk.BooleanVar(master=self.window, value=False)
-
         body = tk.Frame(self.window, bg=BG)
         body.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -424,17 +422,8 @@ class RealRuntimeViewer:
         left.pack(side=tk.LEFT, fill="both", expand=True)
         _label(
             left,
-            "Execution — robot, trail, greedy path (current pose)",
+            "Execution — true world (hidden orange), robot, trail, greedy path",
             muted=True,
-        ).pack(anchor="w")
-        tk.Checkbutton(
-            left,
-            text="Show hidden (debug)",
-            variable=self.show_hidden_var,
-            command=self._redraw,
-            bg=BG,
-            fg=FG,
-            selectcolor=BG2,
         ).pack(anchor="w")
         self.main_canvas = tk.Canvas(
             left, width=self._main_px, height=self._main_px,
@@ -518,6 +507,7 @@ class RealRuntimeViewer:
         path_cells = self._path_cells()
         start = self.sim.scenario.start
         goal = self.sim.scenario.goal
+        trained = self.sim.trained
 
         _draw_grid(
             self.main_canvas,
@@ -536,10 +526,10 @@ class RealRuntimeViewer:
             show_trail=True,
             show_path=True,
             line_board=True,
-            show_hidden_cells=self.show_hidden_var.get(),
+            show_hidden_cells=True,
+            mark_goal=trained,
         )
 
-        trained = self.sim.trained
         _draw_grid(
             self.policy_canvas,
             rows=self.sim.rows,
@@ -553,18 +543,19 @@ class RealRuntimeViewer:
             policy_heading=ph,
             path_cells=set(),
             size_px=self._policy_px,
-            mark_start_goal=True,
+            mark_start=True,
+            mark_goal=trained,
             line_board=True,
             show_hidden_cells=False,
             show_obstacles=trained,
         )
         if trained:
             self.known_map_label.config(
-                text="Known map — π (heading) + known obstacles",
+                text="Known map — π (heading), goal, known obstacles",
             )
         else:
             self.known_map_label.config(
-                text="Known map — empty until Train (S/G reference only)",
+                text="Known map — empty until Train (start only)",
             )
 
         if trained:

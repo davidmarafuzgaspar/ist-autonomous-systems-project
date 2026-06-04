@@ -33,4 +33,4 @@ cd micro_simulator_dynamic && python run.py
 
 ## Controls
 
-Train · Auto run · Back to start · Next step · manual (left map) · Show hidden (debug)
+Train · Auto run · Back to start · Next step · manual (left map). Hidden = orange on setup + execution only.
