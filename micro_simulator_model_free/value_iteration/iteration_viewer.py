@@ -13,6 +13,7 @@ from .world import (
     MAX_ITERATIONS_DEFAULT,
     THETA_DEFAULT,
     GridAction,
+    GridCell,
     Heading,
     IntersectionWorld,
     PoseState,
