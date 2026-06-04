@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Model-free and model-based solvers for AlphaBot2 grid navigation."""
+"""Model-based, model-free, and dynamic solvers for AlphaBot2 grid navigation."""
 
 from __future__ import annotations
 
@@ -28,6 +28,8 @@ NUM_EPISODES = 1000
 MAX_STEPS = 50
 VALUE_ITER_MAX_ITERS = 200
 VALUE_ITER_TOL = 1e-6
+Q_LEARNING_LOG_INTERVAL = 50
+VALUE_ITER_LOG_INTERVAL = 1
 
 ACTION_STRAIGHT = STRAIGHT
 ACTION_TURN_RIGHT = TURN_RIGHT
@@ -43,7 +45,12 @@ ALL_ACTIONS = (
 
 MODE_MODEL_FREE = "model_free"
 MODE_MODEL_BASED = "model_based"
-SOLVER_MODES = (MODE_MODEL_FREE, MODE_MODEL_BASED)
+MODE_DYNAMIC = "dynamic"
+SOLVER_MODES = (MODE_MODEL_FREE, MODE_MODEL_BASED, MODE_DYNAMIC)
+
+PLANNER_Q_LEARNING = "q_learning"
+PLANNER_VALUE_ITERATION = "value_iteration"
+PLANNER_MODES = (PLANNER_Q_LEARNING, PLANNER_VALUE_ITERATION)
 
 GOAL_REWARD = 100.0
 ILLEGAL_MOVE_REWARD = -50.0
@@ -78,7 +85,7 @@ class Solver:
         epsilon_decay: float = EPSILON_DECAY,
         num_episodes: int = NUM_EPISODES,
         max_steps: int = MAX_STEPS,
-        mode: Literal["model_free", "model_based"] = MODE_MODEL_FREE,
+        mode: Literal["model_free", "model_based", "dynamic"] = MODE_MODEL_FREE,
         value_iter_max_iters: int = VALUE_ITER_MAX_ITERS,
         value_iter_tol: float = VALUE_ITER_TOL,
     ) -> None:
@@ -93,6 +100,7 @@ class Solver:
         self.mode = mode
         self.value_iter_max_iters = value_iter_max_iters
         self.value_iter_tol = value_iter_tol
+        self.active_planner: Literal["q_learning", "value_iteration"] = PLANNER_Q_LEARNING
 
         self.start_row = world.row
         self.start_col = world.col
@@ -153,7 +161,7 @@ class Solver:
     def _best_action(self, row: int, col: int, heading: Heading) -> int:
         if not self._in_bounds(row, col):
             return ACTION_STRAIGHT
-        if self.mode == MODE_MODEL_BASED:
+        if self.active_planner == PLANNER_VALUE_ITERATION:
             if not self.world.is_traversable(row, col):
                 return ACTION_STRAIGHT
             return int(self.policy[row, col, heading.value])
@@ -163,7 +171,7 @@ class Solver:
     def train(
         self,
         log_fn: Callable[[str], None] | None = None,
-        log_interval: int = 50,
+        log_interval: int | None = None,
     ) -> None:
         def emit(message: str) -> None:
             if log_fn is not None:
@@ -173,9 +181,18 @@ class Solver:
 
         emit(f"[solver] mode={self.mode}")
         if self.mode == MODE_MODEL_BASED:
-            self._train_model_based(emit, log_interval)
-            return
-        self._train_model_free(emit, log_interval)
+            vi_interval = (
+                VALUE_ITER_LOG_INTERVAL if log_interval is None else log_interval
+            )
+            self._train_model_based(emit, vi_interval)
+            self.active_planner = PLANNER_VALUE_ITERATION
+        else:
+            ql_interval = (
+                Q_LEARNING_LOG_INTERVAL if log_interval is None else log_interval
+            )
+            self._train_model_free(emit, ql_interval)
+            self.active_planner = PLANNER_Q_LEARNING
+        emit(f"[solver] active_planner={self.active_planner}")
 
     def _train_model_free(
         self,
@@ -342,7 +359,7 @@ class Solver:
 
     def explain_action(self, row: int, col: int, heading: Heading) -> str:
         chosen_action = self.get_action(row, col, heading)
-        if self.mode == MODE_MODEL_BASED:
+        if self.active_planner == PLANNER_VALUE_ITERATION:
             action_scores = self._model_based_action_scores(row, col, heading)
             scored_actions = ", ".join(
                 f"{ACTION_LABELS[action]}={action_scores[action]:.2f}" for action in ALL_ACTIONS
@@ -409,7 +426,24 @@ class Solver:
         heading: Heading,
         *,
         log_fn: Callable[[str], None] | None = None,
-        log_interval: int = 50,
+        log_interval: int | None = None,
     ) -> None:
+        def emit(message: str) -> None:
+            if log_fn is not None:
+                log_fn(message)
+            else:
+                print(message)
+
+        if self.mode != MODE_DYNAMIC:
+            emit(
+                f"[solver] replan ignored: mode={self.mode} "
+                f"(runtime replan only in {MODE_DYNAMIC})"
+            )
+            return
+
+        vi_interval = VALUE_ITER_LOG_INTERVAL if log_interval is None else log_interval
         self.set_start_state(row, col, heading)
-        self.train(log_fn=log_fn, log_interval=log_interval)
+        emit(f"[solver] dynamic replan from ({row},{col},{heading.name}) via value iteration")
+        self._train_model_based(emit, vi_interval)
+        self.active_planner = PLANNER_VALUE_ITERATION
+        emit(f"[solver] active_planner={self.active_planner}")

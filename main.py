@@ -40,11 +40,12 @@ from solver import (
     ACTION_TURN_AROUND,
     ACTION_TURN_LEFT,
     ACTION_TURN_RIGHT,
+    MODE_DYNAMIC,
     MODE_MODEL_BASED,
     MODE_MODEL_FREE,
     Solver,
 )
-from world import FREE_CELL, HEADING_DELTA, GridWorld
+from world import HEADING_DELTA, GridWorld
 
 # ──────────────────────────────────────────────────────────────────────────
 # Sensors
@@ -100,15 +101,20 @@ MAP: list[list[int]] = [
     [0, 0, 0, 0, 0],
 ]
 START: tuple[int, int] = (0, 0)       # (row, col)
-START_HEADING: str = "S"         # N | E | S | W
+START_HEADING: str = "N"         # N | E | S | W
 GOAL: tuple[int, int] = (2, 4)        # (row, col)
 
 # ──────────────────────────────────────────────────────────────────────────
 # Solver mode
 # ──────────────────────────────────────────────────────────────────────────
+# model_based: full MAP + value iteration, no runtime IR updates
+# model_free:  full MAP + Q-learning offline, no runtime IR updates
+# dynamic:     MAP as belief (0=free/unknown, 1=known obstacle); Q-learning
+#              at startup; IR discovery + value-iteration replan when blocking
 INITIAL_OBSTACLE_SAMPLE_TIMEOUT = 0.5
-SOLVER_MODE = MODE_MODEL_FREE
 #SOLVER_MODE = MODE_MODEL_BASED
+#SOLVER_MODE = MODE_MODEL_FREE
+SOLVER_MODE = MODE_DYNAMIC
 
 # ──────────────────────────────────────────────────────────────────────────
 # Debug logging
@@ -215,6 +221,9 @@ class CrossHandler(Node):
 
         # --- Logger Information ---
         self.get_logger().info('AlphaBot2 cross handler ready (line follow + junctions)')
+        self.get_logger().info(
+            f'Solver mode={SOLVER_MODE} active_planner={self.solver.active_planner}'
+        )
         self.get_logger().info(f'Grid pose: {self.world.pose_str()}  goal={GOAL}')
         self._log_solver_report()
         self._log_map()
@@ -237,9 +246,7 @@ class CrossHandler(Node):
         )
 
     def _build_initial_map_for_solver(self) -> list[list[int]]:
-        """Model-free starts with unknown map: assume all cells are free."""
-        if SOLVER_MODE == MODE_MODEL_FREE:
-            return [[FREE_CELL for _ in row] for row in MAP]
+        """All modes use global MAP (dynamic: 0=free/unknown belief, 1=known obstacle)."""
         return [list(row) for row in MAP]
 
     def obstacle_callback(self, msg: Obstacle) -> None:
@@ -249,8 +256,8 @@ class CrossHandler(Node):
         self._have_obstacle_sample = True
 
     def _prime_initial_obstacle_map_from_ir(self) -> None:
-        """Before solver training, check obstacle ahead from initial heading."""
-        if SOLVER_MODE != MODE_MODEL_FREE:
+        """Before solver training, check obstacle ahead from initial heading (dynamic only)."""
+        if SOLVER_MODE != MODE_DYNAMIC:
             return
         deadline = time.monotonic() + INITIAL_OBSTACLE_SAMPLE_TIMEOUT
         while not self._have_obstacle_sample and time.monotonic() < deadline:
@@ -287,7 +294,7 @@ class CrossHandler(Node):
         Returns:
             True when updated policy should be applied immediately via SEARCH.
         """
-        if SOLVER_MODE != MODE_MODEL_FREE:
+        if SOLVER_MODE != MODE_DYNAMIC:
             return False
         self.get_logger().info(
             'Obstacle check: evaluating IR obstacle sample after movement completion'
@@ -341,7 +348,6 @@ class CrossHandler(Node):
                 self.world.col,
                 self.world.heading,
                 log_fn=self.get_logger().info,
-                log_interval=50,
             )
             self._log_solver_report()
 
@@ -453,10 +459,27 @@ class CrossHandler(Node):
         """Brake via motion_driver: zero linear and angular velocity."""
         self.pub.publish(Twist())
 
+    def _should_run_obstacle_check_after_pause(self, pause_target_phase: int) -> bool:
+        """When to sample IR after a pause (dynamic mode only).
+
+        STRAIGHT skips the ALIGN→SEARCH pause (second pause before FOLLOW still checks).
+        Turns and U-turn still check when entering SEARCH (after ALIGN / leg 1) and FOLLOW.
+        """
+        if SOLVER_MODE != MODE_DYNAMIC:
+            return False
+        if pause_target_phase == PHASE_FOLLOW:
+            return True
+        if pause_target_phase == PHASE_JUNCTION_SEARCH:
+            return self.search_dir != ACTION_STRAIGHT
+        return False
+
     def _complete_phase_pause(self) -> None:
         """Leave PHASE_PAUSE: advance phase and run transition hooks."""
-        self.phase = self._after_pause_phase
-        apply_search_now = self._maybe_process_obstacle_sample()
+        pause_target = self._after_pause_phase
+        self.phase = pause_target
+        apply_search_now = False
+        if self._should_run_obstacle_check_after_pause(pause_target):
+            apply_search_now = self._maybe_process_obstacle_sample()
         if apply_search_now:
             self.phase = PHASE_JUNCTION_SEARCH
 
@@ -619,14 +642,23 @@ class CrossHandler(Node):
         )
 
         if cleared:
-            self._log_control(
-                f'ALIGN done → SEARCH next [{self.search_dir}]'
-            )
-            self._schedule_phase_pause(
-                PHASE_JUNCTION_SEARCH,
-                pause_sec=JUNCTION_PAUSE_AFTER_ALIGN,
-                label='search',
-            )
+            if self.search_dir == ACTION_STRAIGHT:
+                self._log_control('ALIGN done → straight, pause then FOLLOW')
+                self._junction_cooldown_pending = True
+                self._schedule_phase_pause(
+                    PHASE_FOLLOW,
+                    pause_sec=JUNCTION_PAUSE_AFTER_SEARCH,
+                    label='line follow',
+                )
+            else:
+                self._log_control(
+                    f'ALIGN done → SEARCH next [{self.search_dir}]'
+                )
+                self._schedule_phase_pause(
+                    PHASE_JUNCTION_SEARCH,
+                    pause_sec=JUNCTION_PAUSE_AFTER_ALIGN,
+                    label='search',
+                )
             return
 
         twist = Twist()
