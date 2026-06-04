@@ -1,1 +1,1 @@
-"""Q-learning after map change (uses mdp_algorithm for phase A)."""
+"""Interactive Q-learning on the intersection grid MDP."""

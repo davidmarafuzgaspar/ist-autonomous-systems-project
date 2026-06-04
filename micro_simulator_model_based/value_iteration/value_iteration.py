@@ -106,3 +106,34 @@ class ValueIteration:
             final_delta=delta,
             converged=converged,
         )
+
+
+def rollout_greedy_policy(
+    world: IntersectionWorld,
+    policy: dict[PoseState, GridAction | None],
+    start: PoseState,
+    *,
+    max_steps: int = 128,
+) -> list[PoseState]:
+    """Follow ``policy`` from ``start`` (same semantics as Q-learning rollout)."""
+    state = start
+    path = [state]
+    seen: set[tuple[int, int, int]] = set()
+    for _ in range(max_steps):
+        if world.is_terminal(state):
+            break
+        key = (state.cell.row, state.cell.col, state.heading.value)
+        if key in seen:
+            break
+        seen.add(key)
+        action = policy.get(state)
+        if action is None:
+            break
+        next_state, _, done = world.simulate_step(state, action)
+        if next_state == state:
+            break
+        path.append(next_state)
+        state = next_state
+        if done:
+            break
+    return path

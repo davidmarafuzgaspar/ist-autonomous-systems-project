@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .world import GridAction, Heading, IntersectionWorld, PoseState
+from .world import GridAction, GridCell, Heading, IntersectionWorld, PoseState
 
 ALPHA_DEFAULT = 0.2
 GAMMA_DEFAULT = 0.85
@@ -70,6 +70,9 @@ class QLearningTrainer:
         self.episode_return = 0.0
         self.episode_done = True
         self.total_episodes_finished = 0
+        self.success_count = 0
+        self.last_episode_return = 0.0
+        self.last_episode_solved = False
         self.state = world.initial_state()
         self.last_step: StepResult | None = None
 
@@ -90,6 +93,9 @@ class QLearningTrainer:
         self.episode_return = 0.0
         self.episode_done = True
         self.total_episodes_finished = 0
+        self.success_count = 0
+        self.last_episode_return = 0.0
+        self.last_episode_solved = False
         self.state = self.world.initial_state()
         self.last_step = None
 
@@ -182,15 +188,26 @@ class QLearningTrainer:
     def _finish_episode(self) -> None:
         self.episode_done = True
         self.total_episodes_finished += 1
+        self.last_episode_return = self.episode_return
+        self.last_episode_solved = bool(self.last_step and self.last_step.done)
+        if self.last_episode_solved:
+            self.success_count += 1
         self.epsilon = max(self.epsilon_end, self.epsilon * self.epsilon_decay)
 
+    def run_all_episodes(self) -> int:
+        """Headless training loop — same structure as ``solver._train_model_free``."""
+        count = 0
+        while not self.training_finished():
+            self.run_episode()
+            count += 1
+        return count
+
     def run_episode(self) -> list[StepResult]:
-        records: list[StepResult] = []
         if self.training_finished():
-            return records
-        if not self.episode_done:
-            self._finish_episode()
-        self.start_episode()
+            return []
+        if self.episode_done:
+            self.start_episode()
+        records: list[StepResult] = []
         while self.can_step():
             rec = self.step()
             if rec is None:
@@ -209,3 +226,56 @@ class QLearningTrainer:
     def q_value(self, state: PoseState, action: GridAction) -> float:
         row, col, h = state.cell.row, state.cell.col, state.heading.value
         return float(self.q_table[row, col, h, int(action)])
+
+    def greedy_rollout(
+        self,
+        start: PoseState,
+        *,
+        max_steps: int = 128,
+    ) -> list[PoseState]:
+        """Follow greedy policy from ``start`` until goal, loop, or step limit."""
+        state = start
+        path = [state]
+        seen: set[tuple[int, int, int]] = set()
+        for _ in range(max_steps):
+            if self.world.is_terminal(state):
+                break
+            key = (state.cell.row, state.cell.col, state.heading.value)
+            if key in seen:
+                break
+            seen.add(key)
+            action = self.greedy_action(state)
+            next_state, _, done = self.world.simulate_step(state, action)
+            if next_state == state:
+                break
+            path.append(next_state)
+            state = next_state
+            if done:
+                break
+        return path
+
+    def format_policy_report(self, *, heading: Heading | None = None) -> str:
+        """ASCII policy (like ``solver.Solver.format_policy_report``)."""
+        headings = [heading] if heading is not None else list(Heading)
+        title = (
+            f"Policy (greedy Q) — heading {heading.name}:"
+            if heading is not None
+            else "Policy (greedy Q) — S/R/L/A per cell:"
+        )
+        lines: list[str] = [title]
+        for h in headings:
+            heading = h
+            if len(headings) > 1:
+                lines.append(f"  Heading {heading.name}:")
+            prefix = "    " if len(headings) > 1 else "  "
+            for row in range(self.world.rows):
+                cells: list[str] = []
+                for col in range(self.world.cols):
+                    cell = GridCell(row, col)
+                    if self.world.is_obstacle(cell):
+                        cells.append("#")
+                    else:
+                        act = self.greedy_action(PoseState(cell, heading))
+                        cells.append(ACTION_GLYPHS[act])
+                lines.append(prefix + " ".join(cells))
+        return "\n".join(lines)

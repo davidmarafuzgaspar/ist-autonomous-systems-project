@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import math
 import time
 import tkinter as tk
 
 from . import ui_theme as ui
+from micro_simulator_model_based.value_iteration.value_iteration import rollout_greedy_policy
+
 from .value_iteration import ValueIteration
 from .world import (
     GAMMA_DEFAULT,
@@ -22,35 +23,19 @@ OUTER_EXTENSION_M = 0.15
 MARGIN_M = 0.12
 OBSTACLE_SIZE_M = 0.10
 
+_GRID_DELTA_RC: dict[Heading, tuple[int, int]] = {
+    Heading.N: (-1, 0),
+    Heading.E: (0, 1),
+    Heading.S: (1, 0),
+    Heading.W: (0, -1),
+}
+
 _HEADING_UNIT_VEC: dict[Heading, tuple[float, float]] = {
     Heading.N: (0.0, 1.0),
     Heading.E: (1.0, 0.0),
     Heading.S: (0.0, -1.0),
     Heading.W: (-1.0, 0.0),
 }
-
-
-def _oriented_turn_arc_world_xy(
-    x_m: float,
-    y_m: float,
-    heading: Heading,
-    turn_left: bool,
-    radius_m: float,
-    segments: int = 14,
-) -> list[tuple[float, float]]:
-    u0x, u0y = _HEADING_UNIT_VEC[heading]
-    h1 = heading.turn_left() if turn_left else heading.turn_right()
-    u1x, u1y = _HEADING_UNIT_VEC[h1]
-    pts: list[tuple[float, float]] = []
-    for i in range(segments + 1):
-        t = (i / segments) * (math.pi / 2)
-        pts.append(
-            (
-                x_m + radius_m * (math.cos(t) * u0x + math.sin(t) * u1x),
-                y_m + radius_m * (math.cos(t) * u0y + math.sin(t) * u1y),
-            )
-        )
-    return pts
 
 
 class InteractiveValueIterationViewer:
@@ -107,6 +92,7 @@ class InteractiveValueIterationViewer:
         self.sidebar.pack(side=tk.RIGHT, fill="y")
 
         self._build_sidebar()
+        self._update_policy_path_label()
         self._draw()
 
     def _make_vi(self) -> ValueIteration:
@@ -126,7 +112,14 @@ class InteractiveValueIterationViewer:
     def _build_sidebar(self) -> None:
         title = ui.label(self.sidebar, "Value Iteration")
         title.configure(font=ui.FONT_TITLE)
-        title.pack(anchor="w", pady=(0, 10))
+        title.pack(anchor="w", pady=(0, 4))
+        ui.label(
+            self.sidebar,
+            "Each step updates V(s). Pick a heading: each cell shows V and best action "
+            "(S/R/L/A) if you are there facing that way. Green path = rollout from start "
+            "with that initial heading (after converge).",
+            muted=True,
+        ).pack(anchor="w", pady=(0, 10))
 
         self.iter_label = ui.label(self.sidebar, "Iteration: 0")
         self.iter_label.pack(anchor="w")
@@ -142,6 +135,7 @@ class InteractiveValueIterationViewer:
         ui.button(self.sidebar, "Reset", self._on_reset).pack(fill="x", pady=2)
 
         self._build_algorithm_panel()
+        self._build_policy_heading_panel()
         self._build_parameter_panel()
 
         ui.line(self.sidebar)
@@ -160,6 +154,65 @@ class InteractiveValueIterationViewer:
 
     def _algorithm_name(self) -> str:
         return "Jacobi" if self.synchronous else "Gauss-Seidel"
+
+    def _build_policy_heading_panel(self) -> None:
+        ui.line(self.sidebar)
+        ui.label(self.sidebar, "Heading (per-cell π + path from start)", muted=False).pack(anchor="w")
+        self.policy_heading_var = tk.StringVar(
+            master=self.window,
+            value=self.world.start_heading.name,
+        )
+        row = tk.Frame(self.sidebar, bg=ui.BG)
+        row.pack(anchor="w", pady=4)
+        for name in ("N", "E", "S", "W"):
+            rb = ui.radio(row, name, self.policy_heading_var, name)
+            rb.configure(command=self._on_policy_heading_changed)
+            rb.pack(side=tk.LEFT, padx=(0, 8))
+        ui.label(
+            self.sidebar,
+            "Blue arrow = where to go (move dir.); turns show new facing. Change heading to compare.",
+            muted=True,
+        ).pack(anchor="w")
+        self.policy_path_label = ui.label(self.sidebar, "", muted=True)
+        self.policy_path_label.pack(anchor="w", pady=(0, 4))
+
+    def _view_heading(self) -> Heading:
+        return Heading.from_str(self.policy_heading_var.get())
+
+    def _on_policy_heading_changed(self) -> None:
+        self._update_policy_path_label()
+        self._draw()
+
+    def _show_final_policy(self) -> bool:
+        return self.converged
+
+    def _update_policy_path_label(self) -> None:
+        if not self._show_final_policy():
+            if self.iteration == 0:
+                self.policy_path_label.config(text="V = 0 everywhere. Press Next step.")
+            else:
+                delta_str = (
+                    "∞"
+                    if self.last_delta == float("inf")
+                    else f"{self.last_delta:.4f}"
+                )
+                self.policy_path_label.config(
+                    text=f"V still changing (Δ={delta_str}). Policy/path when converged.",
+                )
+            return
+        start = PoseState(self.world.start, self._view_heading())
+        path = rollout_greedy_policy(self.world, self.policy, start)
+        if len(path) <= 1:
+            self.policy_path_label.config(text="Path: blocked under this policy")
+            return
+        if path[-1].cell == self.world.goal:
+            self.policy_path_label.config(
+                text=f"Path: goal in {len(path) - 1} step(s), heading {start.heading.name}",
+            )
+        else:
+            self.policy_path_label.config(
+                text=f"Path: stops after {len(path) - 1} step(s) (loop / block)",
+            )
 
     def _build_algorithm_panel(self) -> None:
         ui.line(self.sidebar)
@@ -288,13 +341,6 @@ class InteractiveValueIterationViewer:
         half_span = (self.world.cols - 1) / 2.0
         return [(index - half_span) * self.world.spacing_m for index in range(self.world.cols)]
 
-    def _cell_policy_and_heading(
-        self,
-    ) -> tuple[dict[GridCell, GridAction | None], dict[GridCell, Heading]]:
-        pol = self.world.aggregated_policy_per_cell(self.values, self.gamma)
-        head = self.world.display_heading_map_for_cell_policy(pol, self.values, self.gamma)
-        return pol, head
-
     def _on_step(self) -> None:
         if self.converged or self.iteration >= self.max_iterations:
             return
@@ -303,6 +349,7 @@ class InteractiveValueIterationViewer:
         if self.last_delta < self.theta:
             self.converged = True
         self.policy = self.vi.greedy_policy(self.values)
+        self._update_policy_path_label()
         self._draw()
 
     def _on_run_to_convergence(self) -> None:
@@ -321,6 +368,7 @@ class InteractiveValueIterationViewer:
             self._on_step()
             self.window.update_idletasks()
         self.time_label.config(text=f"Time: {elapsed_ms:.0f} ms")
+        self._update_policy_path_label()
 
     def _on_reset(self) -> None:
         self.values = self.vi.initial_values()
@@ -329,14 +377,15 @@ class InteractiveValueIterationViewer:
         self.last_delta = float("inf")
         self.converged = False
         self.time_label.config(text="Time: —")
+        self._update_policy_path_label()
         self._draw()
 
     def _draw(self) -> None:
         self.canvas.delete("all")
         self._draw_board()
         self._draw_value_overlays()
+        self._draw_policy_path()
         self._draw_obstacles()
-        self._draw_policy_arrows()
         self._draw_start_and_goal()
         self._update_sidebar_labels()
 
@@ -345,7 +394,7 @@ class InteractiveValueIterationViewer:
             text=f"Iteration: {self.iteration}  ({self._algorithm_name()})",
         )
         delta_str = "∞" if self.last_delta == float("inf") else f"{self.last_delta:.4f}"
-        self.delta_label.config(text=f"Delta: {delta_str}")
+        self.delta_label.config(text=f"Delta (max |ΔV|): {delta_str}")
         if self.iteration == 0:
             self.status_label.config(text="Status: ready", fg=ui.MUTED)
         elif self.converged:
@@ -369,23 +418,82 @@ class InteractiveValueIterationViewer:
             self.canvas.create_line(x0, y0, x1, y1, fill=ui.LINE, width=line_width_px)
 
     def _draw_value_overlays(self) -> None:
+        if self.iteration == 0:
+            return
+        view_h = self._view_heading()
         box_half_m = self.world.spacing_m * 0.42
-        cell_vals = self.world.aggregate_max_v_per_cell(self.values)
-        for cell, value in cell_vals.items():
-            if self.world.is_obstacle(cell):
-                continue
-            x_m, y_m = self.world.world_xy(cell)
-            x0, y0 = self._world_to_canvas(x_m - box_half_m, y_m + box_half_m)
-            x1, y1 = self._world_to_canvas(x_m + box_half_m, y_m - box_half_m)
-            fill = self._value_to_color(value)
-            self.canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline="", width=0)
-            cx, cy = self._world_to_canvas(x_m, y_m)
-            self.canvas.create_text(
-                cx, cy,
-                text=self._format_value(value),
-                fill="#333" if self._is_light(fill) else "#fff",
-                font=(ui.FONT[0], 8, "bold"),
-            )
+        for row in range(self.world.rows):
+            for col in range(self.world.cols):
+                cell = GridCell(row, col)
+                if self.world.is_obstacle(cell):
+                    continue
+                value = self.values.get(PoseState(cell, view_h), 0.0)
+                x_m, y_m = self.world.world_xy(cell)
+                x0, y0 = self._world_to_canvas(x_m - box_half_m, y_m + box_half_m)
+                x1, y1 = self._world_to_canvas(x_m + box_half_m, y_m - box_half_m)
+                fill = self._value_to_color(value)
+                self.canvas.create_rectangle(x0, y0, x1, y1, fill=fill, outline="", width=0)
+                cx, cy = self._world_to_canvas(x_m, y_m)
+                self.canvas.create_text(
+                    cx,
+                    cy,
+                    text=self._format_value(value),
+                    fill="#333" if self._is_light(fill) else "#fff",
+                    font=(ui.FONT[0], 8, "bold"),
+                )
+                if self._show_final_policy() and cell != self.world.goal:
+                    action = self.policy.get(PoseState(cell, view_h))
+                    if action is not None:
+                        self._draw_policy_arrow(cx, cy, view_h, action)
+
+    @staticmethod
+    def _heading_after_action(heading: Heading, action: GridAction) -> Heading:
+        if action == GridAction.TURN_RIGHT:
+            return heading.turn_right()
+        if action == GridAction.TURN_LEFT:
+            return heading.turn_left()
+        if action == GridAction.TURN_AROUND:
+            return heading.turn_right().turn_right()
+        return heading
+
+    def _draw_policy_arrow(
+        self,
+        cx: float,
+        cy: float,
+        view_h: Heading,
+        action: GridAction,
+    ) -> None:
+        if action == GridAction.STRAIGHT:
+            move_h = view_h
+            width = 2.5
+        else:
+            move_h = self._heading_after_action(view_h, action)
+            width = 2.0
+        dr, dc = _GRID_DELTA_RC[move_h]
+        tick = max(12.0, self._meters_to_pixels(self.world.spacing_m * 0.22))
+        y_off = 11.0
+        self.canvas.create_line(
+            cx,
+            cy + y_off,
+            cx + dc * tick,
+            cy + y_off + dr * tick,
+            fill=ui.POLICY,
+            width=width,
+            arrow=tk.LAST,
+            arrowshape=(7, 9, 4),
+            capstyle=tk.ROUND,
+        )
+
+    def _draw_policy_path(self) -> None:
+        if not self._show_final_policy():
+            return
+        start = PoseState(self.world.start, self._view_heading())
+        path = rollout_greedy_policy(self.world, self.policy, start)
+        if len(path) < 2:
+            return
+        pts = [self._world_to_canvas(*self.world.world_xy(s.cell)) for s in path]
+        flat = [c for p in pts for c in p]
+        self.canvas.create_line(*flat, fill=ui.CELL_START, width=3, smooth=False)
 
     def _value_to_color(self, value: float) -> str:
         if value > 0:
@@ -415,48 +523,6 @@ class InteractiveValueIterationViewer:
             self.canvas.create_rectangle(
                 x0, y0, x1, y1, fill=ui.OBSTACLE, outline=ui.BORDER, width=1,
             )
-
-    def _draw_policy_arrows(self) -> None:
-        if self.iteration == 0:
-            return
-        arrow_len = self.world.spacing_m * 0.28
-        arrow_w = max(2.5, self._meters_to_pixels(0.010))
-        head = (max(8.0, self._meters_to_pixels(0.020)), max(10.0, self._meters_to_pixels(0.024)), max(5.0, self._meters_to_pixels(0.014)))
-        y_off = self.world.spacing_m * 0.12
-
-        pol, head_map = self._cell_policy_and_heading()
-        for cell, action in pol.items():
-            if action is None or cell == self.world.goal:
-                continue
-            x_m, y_m = self.world.world_xy(cell)
-            draw_h = head_map.get(cell, Heading.N)
-
-            if action == GridAction.STRAIGHT:
-                move_h = self.world.movement_heading_for_action(draw_h, action)
-                ux, uy = _HEADING_UNIT_VEC[move_h]
-                s = self._world_to_canvas(x_m - ux * arrow_len / 2, y_m - uy * arrow_len / 2 - y_off)
-                e = self._world_to_canvas(x_m + ux * arrow_len / 2, y_m + uy * arrow_len / 2 - y_off)
-                self.canvas.create_line(
-                    *s, *e, fill=ui.POLICY, width=arrow_w, arrow=tk.LAST,
-                    arrowshape=head, capstyle=tk.ROUND,
-                )
-            elif action == GridAction.TURN_AROUND:
-                cx, cy = self._world_to_canvas(x_m, y_m - y_off)
-                self.canvas.create_text(
-                    cx, cy, text="A", fill=ui.POLICY, font=ui.FONT_BOLD,
-                )
-            else:
-                turn_left = action == GridAction.TURN_LEFT
-                arc = _oriented_turn_arc_world_xy(
-                    x_m, y_m, draw_h, turn_left, self.world.spacing_m * 0.13,
-                )
-                flat: list[float] = []
-                for wx, wy in arc:
-                    px, py = self._world_to_canvas(wx, wy)
-                    flat.extend([px, py])
-                self.canvas.create_line(
-                    *flat, fill=ui.POLICY, width=arrow_w, smooth=True, arrow=tk.LAST, arrowshape=head,
-                )
 
     def _draw_start_and_goal(self) -> None:
         r_px = max(10.0, self._meters_to_pixels(0.055))

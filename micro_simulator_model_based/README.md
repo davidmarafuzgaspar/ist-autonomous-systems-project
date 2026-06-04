@@ -1,13 +1,24 @@
-# Micro-simulator (model-free)
+# Micro-simulator (model-based)
 
-Run from this directory (Python 3, Tk):
+Python 3, Tk, numpy for VI.
+
+**From inside each app folder** (works when your shell is already in `micro_simulator_model_based/`):
 
 ```bash
-cd micro_simulator_model_free
-python -m value_iteration.main
-python -m value_iteration_non_deterministic.main
-python -m kinematic.main
+cd value_iteration && python run.py
+cd value_iteration_non_deterministic && python run.py
+cd kinematic && python run.py
 ```
+
+**From the repository root**:
+
+```bash
+python -m micro_simulator_model_based.value_iteration.main
+python -m micro_simulator_model_based.value_iteration_non_deterministic.main
+python -m micro_simulator_model_based.kinematic.main
+```
+
+`python -m micro_simulator_model_based...` fails if the current directory is *inside* `micro_simulator_model_based/` — use `run.py` instead.
 
 | Package | Role |
 |---------|------|
@@ -16,6 +27,8 @@ python -m kinematic.main
 | `kinematic/` | Continuous board sim (line + IR sensors) |
 
 Each app: **map/world setup** → main window → **Change world** reopens setup.
+
+**Model-free Q-learning** lives in `../micro_simulator_model_free/` — see its README.
 
 ## `value_iteration/`
 
