@@ -14,19 +14,19 @@ python -m robot_kinematic_simulator
 
 ## Workflow
 
-1. **World setup** — grelha **5×5** por defeito; click nos cruzamentos para obstáculos.
+1. **World setup** — **5×5** grid by default; click intersections for obstacles.
 2. **Simulation** — **WASD** / arrows to drive; **R** reset; **Change world** back to setup.
 
 Sidebar shows `line_binary` and IR hits (same idea as `/alphabot2/ir_line_sensors` on hardware).
 
 ## Layout (3 modules)
 
-| File | Role |
-|------|------|
+| File     | Role |
+| -------- | ---- |
 | `model.py` | Board, robot, obstacles, `AlphaBotSimulation`, `WorldSetup` |
-| `gui.py` | World-setup dialog + WASD viewer (Tk theme inlined) |
-| `main.py` | Setup → sim loop |
-| `run.py` | Launcher when cwd is this folder |
+| `gui.py`   | World-setup dialog + WASD viewer (Tk theme inlined) |
+| `main.py`  | Setup → sim loop |
+| `run.py`   | Launcher when cwd is this folder |
 
 ## Relation to the real robot
 

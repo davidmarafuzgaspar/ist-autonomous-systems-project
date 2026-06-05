@@ -1,6 +1,6 @@
 # Micro-simulator (model-based)
 
-Value iteration em grelha orientada (determinística ou com slip). Python 3, Tk, numpy.
+Grid-based value iteration (deterministic or with forward slip). Python 3, Tk, numpy.
 
 ## Run
 
@@ -18,18 +18,18 @@ python -m micro_simulator_model_based.value_iteration_non_deterministic
 
 Inside `micro_simulator_model_based/` use `run.py` in each subfolder (not `-m`).
 
-| App                                  | Role                 |
-| ------------------------------------ | -------------------- |
-| `value_iteration/`                   | VI determinística    |
-| `value_iteration_non_deterministic/` | VI com slip à frente |
+| App                                  | Role             |
+| ------------------------------------ | ---------------- |
+| `value_iteration/`                   | VI deterministic |
+| `value_iteration_non_deterministic/` | VI with slip     |
 
-Cada app: **map setup** (5×5 por defeito) → viewer VI → **Change world**.
+Each app: **map setup** (5×5 by default) → VI viewer → **Change world**.
 
-## Layout (igual nos dois apps)
+## Layout (same in both apps)
 
-| Ficheiro   | Conteúdo                                         |
-| ---------- | ------------------------------------------------ |
+| File     | Contents                                         |
+| -------- | ------------------------------------------------ |
 | `model.py` | MDP + `ValueIteration` + `rollout_greedy_policy` |
 | `gui.py`   | Map setup + `InteractiveValueIterationViewer`    |
-| `main.py`  | Loop setup → viewer                              |
-| `run.py`   | Launcher                                         |
+| `main.py`  | Setup → viewer loop                              |
+| `run.py`   | Launcher                                       |

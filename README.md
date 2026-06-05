@@ -325,23 +325,27 @@ ROS_DOMAIN_ID=68 ~/run_alphabot2.sh
 * Docker processes and visualizes data
 
 ---
-# Calibração da Câmara
+# Camera calibration
 
-O ficheiro da calibração está aqui no meu PC:
+The calibration file on the local PC:
+
 ```bash
 cat /tmp/ost.yaml
 ```
 
-Para passar para o alphabot2 tem de se correr (NÃO ESQUECER DE MUDAR O ID DO ALPHABOT2):
+Copy it to the AlphaBot2 (remember to change the robot IP/user):
+
 ```bash
 scp /tmp/ost.yaml deec@10.16.140.68:~/camera_info.yaml
 ```
 
-depois modificar o lauch file no alphabot2:
+Then edit the launch file on the robot:
+
 ```bash
 nano ~/alphabot2-ros2/alphabot2/launch/alphabot2_launch.py
 ```
-Deve ser alterado para:
+
+Set the camera node to:
 
 ```bash
 v4l2_camera_node = Node(
@@ -359,7 +363,8 @@ v4l2_camera_node = Node(
 )
 ```
 
-Concluir com dar colcon build:
+Rebuild:
+
 ```bash
 cd ~/alphabot2-ros2
 colcon build --packages-select alphabot2
@@ -369,60 +374,61 @@ source install/setup.bash
 # AlphaBot2 Node Setup and Development
 
 ---
-## 1) Entrar na pasta do repositório
+## 1) Enter the repository folder
 
 ```terminal
-cd /caminho/para/ist-autonomous-systems-project
+cd /path/to/ist-autonomous-systems-project
 ```
 
-## 2) Editar os ficheiros no repo
+## 2) Edit files in the repo
 
-Estrutura relevante:
+Relevant layout:
 
-- `alphabot2_ws/` (workspace ROS 2)
-- `alphabot2_ws/src/alphabot2-ros2/alphabot2/alphabot2/` (nós Python)
-- `alphabot2_ws/src/alphabot2-ros2/alphabot2/setup.py` (configuração do pacote)
-- `solver.py`, `main.py` — MDP e treino no robot (terminal)
-- `micro_simulator_model_free/` — Q-learning tabular (grelha, Tk); ver README na pasta
-- `micro_simulator_model_based/` — value iteration determinística e com slip; ver README na pasta
-- `robot_kinematic_simulator/` — continuous sim (line + IR, WASD); see folder README
-- `micro_simulator_dynamic/` — known/true map, VI, hidden + sense, popup replan (`solver.py`)
+- `alphabot2_ws/` (ROS 2 workspace)
+- `alphabot2_ws/src/alphabot2-ros2/alphabot2/alphabot2/` (Python nodes)
+- `alphabot2_ws/src/alphabot2-ros2/alphabot2/setup.py` (package configuration)
+- `solver.py`, `main.py` — MDP and training on the robot (terminal)
+- `Micro Simulators/micro_simulator_model_free/` — tabular Q-learning (grid, Tk); see folder README
+- `Micro Simulators/micro_simulator_model_based/` — deterministic and slip value iteration; see folder README
+- `Micro Simulators/robot_kinematic_simulator/` — continuous sim (line + IR, WASD); see folder README
+- `Micro Simulators/micro_simulator_dynamic/` — known/true map, VI, hidden + sense, popup replan (`solver.py`)
 
-### Micro-simuladores e simulador cinemático
+### Micro-simulators and kinematic simulator
 
-| Pasta | Conteúdo |
-|-------|----------|
-| `micro_simulator_model_free/` | Model-free Q-learning — `model.py` + `gui.py`, grelha 5×5 |
-| `micro_simulator_model_based/value_iteration/` | VI determinística — `model.py` + `gui.py` |
-| `micro_simulator_model_based/value_iteration_non_deterministic/` | VI com slip — `model.py` + `gui.py` |
-| `robot_kinematic_simulator/` | Line-grid robot: line + IR sensors, WASD (not ROS) |
-| `micro_simulator_dynamic/` | Known + hidden, VI, sense, popup replan, manual/auto execution |
+| Folder | Contents |
+|--------|----------|
+| `Micro Simulators/micro_simulator_model_free/` | Model-free Q-learning — `model.py` + `gui.py`, 5×5 grid |
+| `Micro Simulators/micro_simulator_model_based/value_iteration/` | Deterministic VI — `model.py` + `gui.py` |
+| `Micro Simulators/micro_simulator_model_based/value_iteration_non_deterministic/` | VI with slip — `model.py` + `gui.py` |
+| `Micro Simulators/robot_kinematic_simulator/` | Line-grid robot: line + IR sensors, WASD (not ROS) |
+| `Micro Simulators/micro_simulator_dynamic/` | Known + hidden, VI, sense, popup replan, manual/auto execution |
 
-Em cada pasta: `python run.py` (ou `python -m …` a partir da raiz do repo). Detalhes nos respetivos `README.md`.
+In each folder: `python run.py` (or `python -m …` from the repo root). See each folder’s `README.md`.
 
-## 3) Compilar e correr a partir da pasta do repo
+## 3) Build and run from the repo folder
+
 ```terminal
-cd /caminho/para/ist-autonomous-systems-project/alphabot2_ws
+cd /path/to/ist-autonomous-systems-project/alphabot2_ws
 colcon build --packages-select alphabot2
 source install/setup.bash
 ros2 run alphabot2 line_sensors
 ```
 
+## 4) In another terminal, verify the topic
 
-## 4) Noutro terminal, confirmar o tópico
 ```terminal
-cd /caminho/para/ist-autonomous-systems-project/alphabot2_ws
+cd /path/to/ist-autonomous-systems-project/alphabot2_ws
 source install/setup.bash
 ros2 topic echo /line_sensors
 ```
 
 ---
 
-## 5) Deploy para qualquer robot (transferir, compilar, instalar e lançar)
+## 5) Deploy to any robot (transfer, build, install, launch)
 
-### 5.1 No teu PC: enviar o código para o robot
+### 5.1 On your PC: send code to the robot
 
-Definir dados do robot:
+Set robot connection details:
 
 ```bash
 ROBOT_USER=deec
@@ -430,7 +436,7 @@ ROBOT_IP=192.168.1.150
 ROBOT_WS=/home/$ROBOT_USER/alphabot2_ws
 ```
 
-Transferir só os pacotes que editaste:
+Transfer only the packages you edited:
 
 ```bash
 scp -r ~/Desktop/ist-autonomous-systems-project/alphabot2_ws/src/alphabot2-ros2 \
@@ -442,7 +448,7 @@ rsync -av --delete \
   ${ROBOT_USER}@${ROBOT_IP}:${ROBOT_WS}/src/alphabot2-ros2/
 ```
 
-### 5.2 No robot: compilar e instalar
+### 5.2 On the robot: build and install
 
 ```bash
 ssh ${ROBOT_USER}@${ROBOT_IP}
@@ -450,36 +456,36 @@ cd ~/alphabot2_ws
 source /opt/ros/humble/setup.bash
 ```
 
-Compilar as interfaces primeiro:
+Build interfaces first:
 
 ```bash
 colcon build --packages-select alphabot2_interfaces --allow-overriding alphabot2_interfaces
 ```
 
-Depois compilar o pacote principal:
+Then build the main package:
 
 ```bash
 colcon build --packages-select alphabot2 --allow-overriding alphabot2
 source install/setup.bash
 ```
 
-> Nota: os warnings de `setuptools` sobre `script-dir` / `install-scripts` são warnings de compatibilidade futura (não bloqueiam o build agora).
+> Note: `setuptools` warnings about `script-dir` / `install-scripts` are future-compatibility warnings (they do not block the build).
 
-### 5.3 Lançar no robot
+### 5.3 Launch on the robot
 
-O launch agora exige argumento obrigatório `force_obstacle_stop`:
+The launch file requires the `force_obstacle_stop` argument:
 
 ```bash
 ros2 launch alphabot2 alphabot2_launch.py force_obstacle_stop:=true
 ```
 
-ou sem force-stop:
+or without force-stop:
 
 ```bash
 ros2 launch alphabot2 alphabot2_launch.py force_obstacle_stop:=false
 ```
 
-### 5.4 Verificação rápida após launch
+### 5.4 Quick check after launch
 
 ```bash
 ros2 topic list | grep alphabot2
@@ -487,4 +493,4 @@ ros2 topic echo /alphabot2/ir_line_sensors
 ros2 topic echo /alphabot2/ir_obstacles_sensors
 ```
 
-Se os tópicos aparecerem e publicarem dados, o deploy ficou concluído.
+If the topics appear and publish data, the deploy is complete.
