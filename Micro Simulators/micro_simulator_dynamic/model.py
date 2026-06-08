@@ -10,7 +10,7 @@ from solver import (
     ACTION_TURN_AROUND,
     ACTION_TURN_LEFT,
     ACTION_TURN_RIGHT,
-    MODE_MODEL_BASED,
+    MODE_DYNAMIC,
     Solver,
 )
 from world import FREE_CELL, HEADING_DELTA, OBSTACLE_CELL, GridWorld, Heading
@@ -32,7 +32,7 @@ class Scenario:
     start: tuple[int, int]
     goal: tuple[int, int]
     start_heading: Heading
-    solver_mode: str = MODE_MODEL_BASED
+    solver_mode: str = MODE_DYNAMIC
 
     @property
     def grid(self) -> list[list[int]]:
@@ -215,7 +215,7 @@ class RealRuntimeSim:
         self._reset_robot_pose()
         self.clear_trail()
         self._init_solver()
-        self._emit("[sim] Value iteration on known map…")
+        self._emit("[sim] Q-learning on known map…")
         self.solver.train(log_fn=self._emit, log_interval=VI_LOG_INTERVAL)
         self._sync_solver_world()
         self.trained = True

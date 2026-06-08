@@ -25,7 +25,7 @@ cd micro_simulator_dynamic && python run.py
 
 ## Hidden + replan flow
 
-1. **Train (VI on known map)** — value iteration on the known map (`MODE_MODEL_BASED`).
+1. **Train (Q-learning on known map)** — tabular Q-learning on the known map (`MODE_DYNAMIC`).
 2. On forward move, the robot senses the cell ahead.
 3. New hidden cell → becomes a known obstacle.
 4. If the current greedy plan used that cell → **popup**: replan with VI from the current pose?

@@ -459,7 +459,7 @@ class RealRuntimeViewer:
         self.status = _label(right, "1) Train  2) Run / step / manual")
         self.status.pack(anchor="w", pady=(0, 8))
 
-        _button(right, "Train (VI on known map)", self._on_train, primary=True).pack(fill="x", pady=2)
+        _button(right, "Train (Q-learning on known map)", self._on_train, primary=True).pack(fill="x", pady=2)
 
         _label(right, "Execute", muted=True).pack(anchor="w", pady=(8, 0))
         _button(right, "Auto run (start → goal)", self._on_auto_run, primary=True).pack(fill="x", pady=2)
@@ -578,7 +578,7 @@ class RealRuntimeViewer:
 
     def _on_train(self) -> None:
         self.sim.train()
-        self.status.config(text="VI trained. Run, next step, or manual.")
+        self.status.config(text="Q-learning done. Run, next step, or manual.")
         self._redraw()
 
     def _on_auto_run(self) -> None:
