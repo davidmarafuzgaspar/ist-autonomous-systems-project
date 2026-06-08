@@ -1,6 +1,13 @@
 # Policy runtime micro-simulator
 
-Two maps: **known** (VI training + π panel) and **true** (execution + hidden). Forward sensing on move → replan popup if the plan is blocked.
+Standalone package (no `Controller/` dependency). Two maps: **known** (Q-learning + π panel) and **true** (execution + hidden). Forward sensing on move → replan popup if the plan is blocked.
+
+| File | Role |
+|------|------|
+| `world.py` | Grid pose + robot motion |
+| `solver.py` | Q-learning train + VI replan |
+| `model.py` | Dual-map runtime (`RealRuntimeSim`) |
+| `gui.py` | Map setup + execution viewer |
 
 ## Run
 

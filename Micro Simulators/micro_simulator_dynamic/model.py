@@ -5,15 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from solver import (
+from .solver import (
     ACTION_STRAIGHT,
     ACTION_TURN_AROUND,
     ACTION_TURN_LEFT,
     ACTION_TURN_RIGHT,
-    MODE_DYNAMIC,
     Solver,
 )
-from world import FREE_CELL, HEADING_DELTA, OBSTACLE_CELL, GridWorld, Heading
+from .world import FREE_CELL, HEADING_DELTA, OBSTACLE_CELL, GridWorld, Heading
 
 FREE = FREE_CELL
 OBSTACLE = OBSTACLE_CELL
@@ -32,8 +31,6 @@ class Scenario:
     start: tuple[int, int]
     goal: tuple[int, int]
     start_heading: Heading
-    solver_mode: str = MODE_DYNAMIC
-
     @property
     def grid(self) -> list[list[int]]:
         """Alias for known map (e.g. when re-opening setup)."""
@@ -108,7 +105,6 @@ class RealRuntimeSim:
                 self.scenario.start_heading,
                 self.scenario.goal,
             ),
-            mode=self.scenario.solver_mode,
         )
 
     def _true_blocked(self, row: int, col: int) -> bool:

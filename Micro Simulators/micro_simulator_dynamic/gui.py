@@ -8,8 +8,8 @@ import tkinter.font as tkfont
 from tkinter import messagebox
 from typing import Callable
 
-from solver import ACTION_LABELS, ACTION_STRAIGHT
-from world import Heading
+from .solver import ACTION_LABELS, ACTION_STRAIGHT
+from .world import Heading
 
 from .model import AUTO_MISSION_MAX_STEPS, FREE, HIDDEN, OBSTACLE, RealRuntimeSim, Scenario
 
